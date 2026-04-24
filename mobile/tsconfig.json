@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
+    "jsx": "react-native",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "types": [
+      "nativewind/types"
+    ]
+  },
+  "extends": "./node_modules/expo/tsconfig.base",
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.d.ts",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts",
+    ".expo/types/**/*.ts"
+  ]
+}

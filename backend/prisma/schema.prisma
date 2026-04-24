@@ -1,0 +1,159 @@
+// This is your Prisma schema file for GramChain
+// Targeting Supabase (PostgreSQL) as database
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  REPAID
+  DEFAULTED
+}
+
+enum MemberRole {
+  MEMBER
+  LEADER
+}
+
+enum RepaymentStatus {
+  CONFIRMED
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  phone         String?   @unique
+  googleId      String?   @unique
+  email         String?   @unique
+  aadhaarHash   String?   @unique
+  panHash       String?   @unique
+  walletAddress String?   @unique
+  kycStatus     KycStatus @default(PENDING)
+  kycDetails    Json?     // Stores demographic KYC payload securely
+  name          String?
+  fcmToken      String?   // Firebase push token
+  password      String?   // Hashed password for phone login
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  shgMemberships SHGMember[]
+  loans          Loan[]
+
+  @@map("users")
+}
+
+model SHGGroup {
+  id                  String   @id @default(cuid())
+  name                String
+  district            String
+  state               String
+  village             String?
+  poolContractAddress String?
+  description         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  members  SHGMember[]
+  loans    Loan[]
+  meetings Meeting[]
+
+  @@map("shg_groups")
+}
+
+model SHGMember {
+  userId   String
+  shgId    String
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shg  SHGGroup @relation(fields: [shgId], references: [id], onDelete: Cascade)
+
+  @@id([userId, shgId])
+  @@map("shg_members")
+}
+
+model Loan {
+  id              String     @id @default(cuid())
+  memberId        String
+  shgId           String
+  amount          Decimal    @db.Decimal(18, 6) // USDC precision
+  interestRateBps Int        // e.g. 1800 = 18% APR in basis points
+  tenureMonths    Int
+  purpose         String?
+  mlScore         Int?
+  mlRiskBand      String?
+  status          LoanStatus @default(PENDING)
+  contractLoanId  Int?       // On-chain loan ID
+  disbursedAt     DateTime?
+  txHash          String?
+  nextEmiDue      DateTime?
+  emiAmount       Decimal?   @db.Decimal(18, 6)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  member     User        @relation(fields: [memberId], references: [id])
+  shg        SHGGroup    @relation(fields: [shgId], references: [id])
+  repayments Repayment[]
+
+  @@map("loans")
+}
+
+model Repayment {
+  id      String          @id @default(cuid())
+  loanId  String
+  amount  Decimal         @db.Decimal(18, 6)
+  paidAt  DateTime        @default(now())
+  txHash  String          @unique
+  status  RepaymentStatus @default(CONFIRMED)
+
+  loan Loan @relation(fields: [loanId], references: [id])
+
+  @@map("repayments")
+}
+
+model Meeting {
+  id        String   @id @default(cuid())
+  shgId     String
+  heldAt    DateTime
+  attendees Json     // Array of user IDs
+  notes     String?
+  createdAt DateTime @default(now())
+
+  shg SHGGroup @relation(fields: [shgId], references: [id])
+
+  @@map("meetings")
+}
+
+model OtpRecord {
+  phone     String   @id
+  otp       String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("otp_records")
+}

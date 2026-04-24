@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "GramChain",
+    "slug": "gramchain",
+    "owner": "gramchain",
+    "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#16a34a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.gramchain.app",
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#16a34a"
+      },
+      "package": "com.gramchain.app",
+      "versionCode": 1,
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "CAMERA",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "scheme": "gramchain",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "aa19570c-9cf6-4994-98cc-8684daa0dc4f"
+      }
+    }
+  }
+}
