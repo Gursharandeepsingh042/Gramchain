@@ -10,7 +10,7 @@ interface AuthState {
   isKycComplete: boolean
   setAuth: (token: string, refreshToken: string, user: User) => void
   logout: () => void
-  completeKyc: () => void
+  completeKyc: (walletAddress?: string) => void
 }
 
 const zustandStorage = {
@@ -33,7 +33,14 @@ export const useAuthStore = create<AuthState>()(
         isKycComplete: user.kycStatus === 'VERIFIED' 
       }),
       logout: () => set({ token: null, refreshToken: null, user: null, isKycComplete: false }),
-      completeKyc: () => set({ isKycComplete: true }),
+      completeKyc: (walletAddress) => set((state) => ({ 
+        isKycComplete: true,
+        user: state.user ? {
+          ...state.user,
+          kycStatus: 'VERIFIED',
+          walletAddress: walletAddress || state.user.walletAddress
+        } : null
+      })),
     }),
     {
       name: 'auth-storage',

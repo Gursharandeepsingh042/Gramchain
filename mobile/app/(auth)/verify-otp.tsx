@@ -1,25 +1,31 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet,
   TouchableOpacity, ScrollView
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
+import { auth } from '@/services/firebase'
+import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
 
 export default function VerifyOtpScreen() {
-  const { phone, mode } = useLocalSearchParams<{ phone: string, mode: string }>()
+  const { phone, mode, verificationId: initialVerificationId } = useLocalSearchParams<{ phone: string, mode: string, verificationId: string }>()
   const { setAuth } = useAuthStore()
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
   const [error, setError] = useState('')
-  const [countdown, setCountdown] = useState(30)
+  const [countdown, setCountdown] = useState(60)
+  const [currentVerificationId, setCurrentVerificationId] = useState(initialVerificationId)
+  const recaptchaVerifier = useRef<any>(null)
 
   useEffect(() => {
     if (countdown > 0) {
@@ -36,33 +42,57 @@ export default function VerifyOtpScreen() {
     setLoading(true)
     setError('')
     try {
-      const res = await authApi.verifyOtp(phone, otp)
+      const credential = PhoneAuthProvider.credential(currentVerificationId, otp)
+      const userCredential = await signInWithCredential(auth, credential)
+      const idToken = await userCredential.user.getIdToken()
+
+      const res = await authApi.verifyFirebase(idToken)
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(accessToken, refreshToken, user)
       router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Invalid OTP. Please try again.')
+      const msg = err.code === 'auth/invalid-verification-code'
+        ? 'Incorrect OTP. Please check and try again.'
+        : err.code === 'auth/code-expired'
+        ? 'OTP expired. Please request a new one.'
+        : err.message || 'Invalid OTP. Please try again.'
+      setError(msg)
     } finally {
       setLoading(false)
     }
   }
 
   const handleResend = async () => {
-    if (countdown > 0) return
-    setLoading(true)
+    if (countdown > 0 || resending) return
+    setResending(true)
+    setError('')
     try {
-      await authApi.sendOtp(phone)
-      setCountdown(30)
-      setError('')
+      const phoneProvider = new PhoneAuthProvider(auth)
+      const resendPromise = phoneProvider.verifyPhoneNumber(
+        `+91${phone}`,
+        recaptchaVerifier.current!
+      )
+      const resendTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
+      )
+      const newVerificationId = await Promise.race([resendPromise, resendTimeout])
+      setCurrentVerificationId(newVerificationId)
+      setCountdown(60)
+      setOtp('')
     } catch (err: any) {
-      setError('Failed to resend OTP')
+      setError(err.message || 'Failed to resend OTP. Please try again.')
     } finally {
-      setLoading(false)
+      setResending(false)
     }
   }
 
   return (
     <SafeAreaView style={styles.container}>
+      <FirebaseRecaptchaVerifierModal
+        ref={recaptchaVerifier}
+        firebaseConfig={auth.app.options as any}
+        firebaseVersion="9.23.0"
+      />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.surface} />
@@ -100,6 +130,12 @@ export default function VerifyOtpScreen() {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
+            {__DEV__ && (
+              <View style={styles.devHint}>
+                <Text style={styles.devHintText}>🛠 Dev: Add your number as a test number in Firebase Console → Authentication → Phone → Test Numbers. Use any 6-digit OTP you set there.</Text>
+              </View>
+            )}
+
             <Button
                 label="VERIFY & CONTINUE"
                 onPress={handleVerify}
@@ -109,13 +145,13 @@ export default function VerifyOtpScreen() {
                 style={styles.verifyBtn}
             />
 
-            <TouchableOpacity 
-                disabled={countdown > 0} 
+            <TouchableOpacity
+                disabled={countdown > 0 || resending}
                 onPress={handleResend}
                 style={styles.resendBtn}
             >
-                <Text style={[styles.resendText, countdown > 0 && { opacity: 0.5 }]}>
-                    {countdown > 0 ? `Resend code in ${countdown}s` : "Didn't receive code? Resend"}
+                <Text style={[styles.resendText, (countdown > 0 || resending) && { opacity: 0.5 }]}>
+                    {resending ? 'Sending...' : countdown > 0 ? `Resend code in ${countdown}s` : "Didn't receive code? Resend"}
                 </Text>
             </TouchableOpacity>
         </View>
@@ -214,5 +250,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 15,
     fontSize: 14,
-  }
+  },
+  devHint: {
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+  },
+  devHintText: {
+    fontSize: 12,
+    color: colors.text.primary,
+    lineHeight: 18,
+  },
 })

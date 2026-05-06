@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
+import { ZodError } from 'zod'
 import { sendError } from '@/utils/response'
+import { logger } from '@/lib/logger'
 
 export class AppError extends Error {
   constructor(
@@ -13,20 +15,37 @@ export class AppError extends Error {
 }
 
 /**
- * Global error handler — must be registered last in Express middleware chain
+ * Global error handler — must be registered last in Express middleware chain.
+ *
+ * FIX: Added ZodError handling so validation failures return clean 400 responses
+ * instead of crashing with 500 "unexpected error" messages.
+ * Also added structured logging for all unhandled errors.
  */
 export const errorHandler = (
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ): void => {
+  // ── App-level business logic errors ─────────────────────────
   if (err instanceof AppError) {
+    logger.warn({ code: err.code, path: req.path, status: err.statusCode }, err.message)
     sendError(res, err.code, err.message, err.statusCode)
     return
   }
 
-  // Prisma known errors
+  // ── Zod validation errors ───────────────────────────────────
+  if (err instanceof ZodError) {
+    const firstIssue = err.issues[0]
+    const message = firstIssue
+      ? `Validation error on field '${firstIssue.path.join('.')}': ${firstIssue.message}`
+      : 'Validation error'
+    logger.warn({ path: req.path, issues: err.issues }, 'Request validation failed')
+    sendError(res, 'VALIDATION_ERROR', message, 400)
+    return
+  }
+
+  // ── Prisma known errors ─────────────────────────────────────
   if (err.name === 'PrismaClientKnownRequestError') {
     const prismaErr = err as any
     if (prismaErr.code === 'P2002') {
@@ -37,8 +56,13 @@ export const errorHandler = (
       sendError(res, 'NOT_FOUND', 'Record not found', 404)
       return
     }
+    if (prismaErr.code === 'P2003') {
+      sendError(res, 'FOREIGN_KEY_CONSTRAINT', 'Related record not found', 400)
+      return
+    }
   }
 
-  console.error('❌ Unhandled error:', err)
+  // ── Unexpected errors ────────────────────────────────────────
+  logger.error({ err, path: req.path, method: req.method }, '❌ Unhandled error')
   sendError(res, 'INTERNAL_ERROR', 'An unexpected error occurred', 500)
 }

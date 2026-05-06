@@ -29,7 +29,7 @@ const testPanVerify = async () => {
             },
             {
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    'Authorization': token,
                     'x-api-key': apiKey,
                     'x-api-version': '1.0',
                     'Content-Type': 'application/json'

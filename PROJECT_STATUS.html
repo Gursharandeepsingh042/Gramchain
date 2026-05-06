@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>GramChain — Project Completion Status</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 40px 24px;
+    line-height: 1.5;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    color: #38bdf8; font-size: 12px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  h1 { font-size: 38px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .subtitle { color: #94a3b8; font-size: 16px; }
+  .timestamp { color: #64748b; font-size: 13px; margin-top: 12px; }
+
+  .overall {
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 36px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  .overall-num { font-size: 56px; font-weight: 800; color: #38bdf8; line-height: 1; }
+  .overall-label { color: #94a3b8; font-size: 13px; font-weight: 600;
+                   letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .overall-detail { color: #cbd5e1; font-size: 14px; }
+
+  .chart {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 36px;
+  }
+  .chart-title {
+    font-size: 20px; font-weight: 700; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .chart-title::before {
+    content: ''; display: inline-block;
+    width: 4px; height: 22px; background: #38bdf8; border-radius: 2px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 200px 1fr 70px;
+    gap: 16px; align-items: center;
+    margin-bottom: 18px;
+  }
+  .row-label {
+    font-size: 14px; font-weight: 600; color: #e2e8f0; text-align: right;
+  }
+  .row-label small {
+    display: block; font-size: 11px; color: #64748b;
+    font-weight: 400; margin-top: 2px;
+  }
+  .bar-track {
+    background: rgba(148, 163, 184, 0.1);
+    border-radius: 8px; height: 28px; position: relative; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 8px;
+    display: flex; align-items: center; padding-left: 12px;
+    font-size: 12px; font-weight: 600; color: #fff;
+    transition: width 1.2s cubic-bezier(.4,0,.2,1);
+    background: linear-gradient(90deg, var(--c1), var(--c2));
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  }
+  .row-pct { font-size: 16px; font-weight: 700; color: #e2e8f0; text-align: left; }
+
+  /* Color tiers — green (>=75), yellow (60-74), orange (40-59), red (<40) */
+  .tier-strong { --c1: #16a34a; --c2: #4ade80; }
+  .tier-good   { --c1: #ca8a04; --c2: #facc15; }
+  .tier-warn   { --c1: #ea580c; --c2: #fb923c; }
+  .tier-risk   { --c1: #dc2626; --c2: #f87171; }
+
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    margin-top: 24px; padding-top: 20px;
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+  .blockers {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .blockers h2 {
+    font-size: 20px; font-weight: 700; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .blockers h2::before {
+    content: ''; display: inline-block;
+    width: 4px; height: 22px; background: #f87171; border-radius: 2px;
+  }
+  .blocker {
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
+  .blocker:last-child { border-bottom: none; }
+  .blocker-cat {
+    font-size: 13px; font-weight: 700; color: #38bdf8;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+  }
+  .blocker-text { font-size: 14px; color: #cbd5e1; }
+
+  footer {
+    margin-top: 36px; padding-top: 20px;
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+    font-size: 12px; color: #64748b; text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="eyebrow">Project Status Snapshot</div>
+    <h1>GramChain — Completion Dashboard</h1>
+    <div class="subtitle">Honest assessment of where each subsystem stands today.</div>
+    <div class="timestamp">Generated for review · MVP / pre-launch phase</div>
+  </header>
+
+  <div class="overall">
+    <div class="overall-num">61%</div>
+    <div>
+      <div class="overall-label">Weighted Overall Completion</div>
+      <div class="overall-detail">
+        Core product paths (auth → SHG → loan → repay → audit on chain) are
+        functional end-to-end on localhost. Production readiness blocked
+        primarily by deployment, ops hardening, and security audit.
+      </div>
+    </div>
+  </div>
+
+  <div class="chart">
+    <div class="chart-title">Subsystem Completion</div>
+
+    <!-- Each row: category | bar | % -->
+    <div class="row">
+      <div class="row-label">Database & Schema<small>Postgres + Prisma</small></div>
+      <div class="bar-track"><div class="bar-fill tier-strong" style="width:85%">Solid foundation</div></div>
+      <div class="row-pct">85%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Authentication & KYC<small>OTP + JWT + roles</small></div>
+      <div class="bar-track"><div class="bar-fill tier-strong" style="width:80%">Working</div></div>
+      <div class="row-pct">80%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Backend API<small>Express + services</small></div>
+      <div class="bar-track"><div class="bar-fill tier-strong" style="width:80%">Feature complete</div></div>
+      <div class="row-pct">80%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Blockchain Integration<small>Outbox · Worker · Listener</small></div>
+      <div class="bar-track"><div class="bar-fill tier-strong" style="width:80%">Wired end-to-end</div></div>
+      <div class="row-pct">80%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Smart Contracts<small>4 contracts · 79 tests</small></div>
+      <div class="bar-track"><div class="bar-fill tier-strong" style="width:75%">Tested · not deployed</div></div>
+      <div class="row-pct">75%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Frontend / Mobile<small>Expo + React Native</small></div>
+      <div class="bar-track"><div class="bar-fill tier-good" style="width:72%">Functional</div></div>
+      <div class="row-pct">72%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Notifications<small>Expo Push + FCM</small></div>
+      <div class="bar-track"><div class="bar-fill tier-good" style="width:70%">Working</div></div>
+      <div class="row-pct">70%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Payments<small>UPI · Bank linking</small></div>
+      <div class="bar-track"><div class="bar-fill tier-warn" style="width:55%">Partial</div></div>
+      <div class="row-pct">55%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Testing<small>Contracts · API · UI</small></div>
+      <div class="bar-track"><div class="bar-fill tier-warn" style="width:50%">Uneven coverage</div></div>
+      <div class="row-pct">50%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">ML / Credit Scoring<small>Risk band registry</small></div>
+      <div class="bar-track"><div class="bar-fill tier-warn" style="width:40%">Demo only</div></div>
+      <div class="row-pct">40%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Security & Custody<small>Signer · Roles · Audit</small></div>
+      <div class="bar-track"><div class="bar-fill tier-risk" style="width:30%">Pre-hardening</div></div>
+      <div class="row-pct">30%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">DevOps & CI/CD<small>Pipelines · Infra</small></div>
+      <div class="bar-track"><div class="bar-fill tier-risk" style="width:25%">Manual</div></div>
+      <div class="row-pct">25%</div>
+    </div>
+
+    <div class="row">
+      <div class="row-label">Documentation<small>README · Runbooks</small></div>
+      <div class="bar-track"><div class="bar-fill tier-risk" style="width:25%">Minimal</div></div>
+      <div class="row-pct">25%</div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="swatch" style="background:#16a34a"></span> Strong (≥75%)</div>
+      <div class="legend-item"><span class="swatch" style="background:#ca8a04"></span> Good (60–74%)</div>
+      <div class="legend-item"><span class="swatch" style="background:#ea580c"></span> Needs work (40–59%)</div>
+      <div class="legend-item"><span class="swatch" style="background:#dc2626"></span> Critical gap (&lt;40%)</div>
+    </div>
+  </div>
+
+  <div class="blockers">
+    <h2>What's Blocking Each Category From 100%</h2>
+
+    <div class="blocker">
+      <div class="blocker-cat">Database & Schema · 85%</div>
+      <div class="blocker-text">Solid models. Missing: <code>DriftAlert</code> table, <code>retryCount</code> on failed jobs, <code>chainProcessedAt</code> idempotency flag on ledger entries. Migrations queued in Sprint 1.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Authentication & KYC · 80%</div>
+      <div class="blocker-text">OTP + JWT working. Wallet-as-audit-identifier copy now honest. Missing: rate limiting on OTP, refresh token rotation, KYC document verification automation.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Backend API · 80%</div>
+      <div class="blocker-text">All major routes implemented. Missing: reconcile worker for failed chain jobs, drift-audit cron, default-detection cron, ops health endpoint.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Blockchain Integration · 80%</div>
+      <div class="blocker-text">Outbox + writer (concurrency 1) + listener with backfill all working. 9 job types now wired. Missing: idempotency on EMI/disbursement refs, stuck-tx watchdog, gas oracle.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Smart Contracts · 75%</div>
+      <div class="blocker-text">4 contracts compile, 79 tests pass. Missing: deployment to Polygon Amoy + mainnet, UUPS proxy upgradeability, external Solidity audit, <code>EmiPaid</code> event amount field.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Frontend / Mobile · 72%</div>
+      <div class="blocker-text">All major flows functional. Polygonscan link added. Missing: loading skeletons on a few screens, offline mode, accessibility pass, push-notif deeplinks for some events.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Notifications · 70%</div>
+      <div class="blocker-text">Push + in-app working. Missing: digest/quiet hours, multi-language templates beyond Hindi/English, click-through analytics.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Payments · 55%</div>
+      <div class="blocker-text">Bank linking + UPI deeplink basics. USDC on-ramp deprecated. Missing: payment confirmation webhooks, refund flow, settlement reconciliation, NACH mandates.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Testing · 50%</div>
+      <div class="blocker-text">Solidity excellent (79 tests). Missing: backend integration tests, mobile E2E (Detox/Maestro), load tests, contract fuzzing.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">ML / Credit Scoring · 40%</div>
+      <div class="blocker-text">CreditScoreRegistry contract ready. <code>DEMO_MODE</code> returns hardcoded 720. Missing: real ML model deployment, training pipeline, periodic re-scoring cron, feature store.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Security & Custody · 30%</div>
+      <div class="blocker-text">Single backend signer in <code>.env</code> = SPOF. Missing: KMS for signer key, Gnosis Safe multisig admin, role-grant timelocks, contract audit, smart-contract insurance.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">DevOps & CI/CD · 25%</div>
+      <div class="blocker-text">Manual everything. Missing: GitHub Actions for build+test+deploy, Docker images, staging environment, observability stack (logs/metrics/traces), backup automation.</div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-cat">Documentation · 25%</div>
+      <div class="blocker-text">README + workflow files only. Missing: architecture diagram, API docs (OpenAPI), incident runbooks, contract upgrade procedure, contributor guide.</div>
+    </div>
+  </div>
+
+  <footer>
+    Visualization is honest, not aspirational. Percentages reflect functional
+    completeness verified by code review &mdash; not lines of code or commits.
+  </footer>
+
+</div>
+
+<script>
+  // Animate bars from 0 to their target width on load
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.bar-fill').forEach(bar => {
+      const target = bar.style.width;
+      bar.style.width = '0%';
+      requestAnimationFrame(() => {
+        setTimeout(() => { bar.style.width = target; }, 80);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

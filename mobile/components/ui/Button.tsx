@@ -10,6 +10,7 @@ import {
   StyleProp,
   ViewStyle,
 } from 'react-native'
+import * as Haptics from 'expo-haptics'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
 
@@ -92,6 +93,7 @@ export const Button = ({
   const isDisabled = disabled || loading
 
   const handlePressIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     Animated.spring(scaleAnim, {
       toValue:          0.96,
       useNativeDriver:  true,

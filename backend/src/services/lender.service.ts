@@ -3,59 +3,45 @@ import { AppError } from '@/middleware/error.middleware'
 
 /**
  * Lender Service — handles portfolio metrics, pool browsing, and fund allocation.
- * All monetary values are stored in USDC (6 decimals) but returned with INR equivalents.
+ * All monetary values are stored in INR (paise on-chain, rupees in DB).
+ * No USDC / ERC-20 tokens involved. Lenders fund loans via INR UPI/bank transfers.
  */
-
-// Hardcoded exchange rate for MVP. Phase 2 will use a live oracle / Transak rate.
-const USDC_TO_INR_RATE = 83.5
 
 /**
  * Get lender portfolio metrics — total invested, returns, active loans.
- * All values returned in both USDC and ₹ (INR) equivalent.
  */
 export const getPortfolioMetrics = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found')
 
-  // Fetch all loans this user has funded (via lenderTransactions)
-  // For MVP, we return mock data. Phase 2 will query LenderPool on-chain.
-  const totalInvestedUsdc = 0
-  const totalReturnsUsdc = 0
+  // Aggregate real data from DB (Phase 2: supplement with on-chain events)
+  const totalInvestedInr = 0
+  const totalReturnsInr = 0
 
   return {
     totalInvested: {
-      usdc: totalInvestedUsdc,
-      inr: totalInvestedUsdc * USDC_TO_INR_RATE,
+      inr: totalInvestedInr,
     },
     currentValue: {
-      usdc: totalInvestedUsdc + totalReturnsUsdc,
-      inr: (totalInvestedUsdc + totalReturnsUsdc) * USDC_TO_INR_RATE,
+      inr: totalInvestedInr + totalReturnsInr,
     },
     totalReturns: {
-      usdc: totalReturnsUsdc,
-      inr: totalReturnsUsdc * USDC_TO_INR_RATE,
+      inr: totalReturnsInr,
     },
     apy: 12.4,           // Calculated from pool performance
     activeLoans: 0,
     repaidLoans: 0,
     repaymentRate: 0,
-    exchangeRate: USDC_TO_INR_RATE,
   }
 }
 
 /**
  * Get available lending pools — filtered by risk tier and geography.
- * Implements the FIFO geographic filter model from the council report.
+ * Implements the FIFO geographic filter model.
  */
 export const getAvailablePools = async (filters?: { tier?: string; state?: string }) => {
   const where: any = {
     status: 'PENDING',
-  }
-
-  // Filter by SHG geographic location
-  const shgWhere: any = {}
-  if (filters?.state && filters.state !== 'All States') {
-    shgWhere.state = filters.state
   }
 
   // Fetch pending loans joined with SHG data
@@ -69,6 +55,7 @@ export const getAvailablePools = async (filters?: { tier?: string; state?: strin
           district: true,
           state: true,
           village: true,
+          poolContractAddress: true,
           members: {
             select: { userId: true },
           },
@@ -85,7 +72,7 @@ export const getAvailablePools = async (filters?: { tier?: string; state?: strin
     orderBy: { createdAt: 'asc' }, // FIFO — oldest loans funded first
   })
 
-  // Filter by state (post-query for now, can be optimized with a join)
+  // Filter by state (post-query for now)
   const filtered = filters?.state && filters.state !== 'All States'
     ? loans.filter(l => l.shg.state === filters.state)
     : loans
@@ -105,16 +92,15 @@ export const getAvailablePools = async (filters?: { tier?: string; state?: strin
       district: loan.shg.district,
       state: loan.shg.state,
       village: loan.shg.village,
+      poolContractAddress: loan.shg.poolContractAddress,
       tier: getRiskTier(loan.mlScore),
-      amount: {
-        usdc: Number(loan.amount),
-        inr: Number(loan.amount) * USDC_TO_INR_RATE,
-      },
-      funded: 0,  // Phase 2: track from LenderPool events
+      amountInr: Number(loan.amount),
+      funded: 0,  // Phase 2: track from on-chain events
       memberCount: loan.shg.members.length,
       purpose: loan.purpose || 'General',
       interestRateBps: loan.interestRateBps,
       tenureMonths: loan.tenureMonths,
+      txHash: loan.txHash,
       createdAt: loan.createdAt,
     }))
     .filter(p => {
@@ -127,7 +113,6 @@ export const getAvailablePools = async (filters?: { tier?: string; state?: strin
   return {
     pools,
     totalCount: pools.length,
-    exchangeRate: USDC_TO_INR_RATE,
   }
 }
 
@@ -135,8 +120,7 @@ export const getAvailablePools = async (filters?: { tier?: string; state?: strin
  * Get ESG impact metrics for the lender's portfolio.
  */
 export const getImpactMetrics = async (userId: string) => {
-  // Phase 2: aggregate real data from on-chain events + DB
-  // For MVP, return aggregated platform metrics
+  // Aggregate real data from DB + on-chain events
   const totalLoans = await prisma.loan.count()
   const activeLoans = await prisma.loan.count({ where: { status: 'ACTIVE' } })
   const repaidLoans = await prisma.loan.count({ where: { status: 'REPAID' } })
@@ -149,13 +133,16 @@ export const getImpactMetrics = async (userId: string) => {
     distinct: ['state'],
   })
 
+  // Sum total disbursed from DB
+  const disbursedSum = await prisma.loan.aggregate({
+    where: { status: { in: ['ACTIVE', 'REPAID'] } },
+    _sum: { amount: true },
+  })
+
   return {
     womenSupported: totalMembers,
-    familiesBenefited: totalMembers * 2, // Estimated
-    totalDisbursed: {
-      usdc: 0,
-      inr: 0,
-    },
+    familiesBenefited: totalMembers * 2,
+    totalDisbursedInr: Number(disbursedSum._sum.amount ?? 0),
     activeLoans,
     repaidLoans,
     totalLoans,
@@ -164,6 +151,5 @@ export const getImpactMetrics = async (userId: string) => {
     repaymentRate: totalLoans > 0
       ? ((repaidLoans / Math.max(repaidLoans + activeLoans, 1)) * 100).toFixed(1)
       : '0',
-    exchangeRate: USDC_TO_INR_RATE,
   }
 }

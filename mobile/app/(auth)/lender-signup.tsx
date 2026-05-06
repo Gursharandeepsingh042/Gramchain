@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
+import { auth } from '@/services/firebase'
+import { PhoneAuthProvider, signInWithCredential, EmailAuthProvider, linkWithCredential } from 'firebase/auth'
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
 
 type SignupStep = 1 | 2 | 3
 
@@ -36,6 +39,28 @@ export default function LenderSignupScreen() {
   })
 
   const [otp, setOtp] = useState('')
+  const [verificationId, setVerificationId] = useState('')
+  const [resending, setResending] = useState(false)
+  const recaptchaVerifier = React.useRef(null)
+
+  const handleResendOtp = async () => {
+    if (resending) return
+    setResending(true)
+    setError('')
+    try {
+      const phoneProvider = new PhoneAuthProvider(auth)
+      const vId = await phoneProvider.verifyPhoneNumber(
+        `+91${formData.phone}`,
+        recaptchaVerifier.current!
+      )
+      setVerificationId(vId)
+      setOtp('')
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend OTP')
+    } finally {
+      setResending(false)
+    }
+  }
 
   const handleContinue = async () => {
     setError('')
@@ -48,10 +73,35 @@ export default function LenderSignupScreen() {
 
       setLoading(true)
       try {
-        await authApi.sendOtp(formData.phone)
+        // Check if phone already registered
+        const checkRes = await authApi.checkPhone(formData.phone)
+        if (checkRes.data.data.exists) {
+          Alert.alert(
+            'Already Registered',
+            'This number is already linked to a GramChain account. Please login instead.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Login', onPress: () => router.replace('/lender-login' as any) },
+            ]
+          )
+          setLoading(false)
+          return
+        }
+
+        // Send real OTP via Firebase Phone Auth
+        const phoneProvider = new PhoneAuthProvider(auth)
+        const otpPromise = phoneProvider.verifyPhoneNumber(
+          `+91${formData.phone}`,
+          recaptchaVerifier.current!
+        )
+        const otpTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
+        )
+        const vId = await Promise.race([otpPromise, otpTimeout])
+        setVerificationId(vId)
         setStep(2)
       } catch (err: any) {
-        setError(err.response?.data?.error?.message || 'Failed to send OTP')
+        setError(err.message || 'Failed to send OTP')
       } finally {
         setLoading(false)
       }
@@ -62,10 +112,17 @@ export default function LenderSignupScreen() {
       }
       setLoading(true)
       try {
-        await authApi.verifyOtp(formData.phone, otp)
+        // Verify OTP via Firebase
+        const credential = PhoneAuthProvider.credential(verificationId, otp)
+        await signInWithCredential(auth, credential)
         setStep(3)
       } catch (err: any) {
-        setError(err.response?.data?.error?.message || 'Invalid OTP')
+        const msg = err.code === 'auth/invalid-verification-code'
+          ? 'Incorrect OTP. Please check and try again.'
+          : err.code === 'auth/code-expired'
+          ? 'OTP expired. Tap back and request a new one.'
+          : err.message || 'Invalid OTP'
+        setError(msg)
       } finally {
         setLoading(false)
       }
@@ -85,17 +142,27 @@ export default function LenderSignupScreen() {
 
       setLoading(true)
       try {
-        const res = await authApi.register({
-          phone: formData.phone,
-          name: formData.fullName,
-          email: formData.email,
-          password: formData.password
-        })
+        const currentUser = auth.currentUser
+        if (!currentUser) throw new Error('Authentication session lost. Please go back to step 1.')
+
+        // Link Email/Password to the Phone-authenticated Firebase user
+        const emailCred = EmailAuthProvider.credential(formData.email, formData.password)
+        try {
+          await linkWithCredential(currentUser, emailCred)
+        } catch (linkError: any) {
+          if (linkError.code !== 'auth/provider-already-linked') {
+            throw linkError
+          }
+        }
+
+        // Register via Firebase token verification — creates user in backend DB
+        const idToken = await currentUser.getIdToken()
+        const res = await authApi.verifyFirebase(idToken, formData.fullName, undefined, formData.password)
         const { accessToken, refreshToken, user } = res.data.data
         setAuth(accessToken, refreshToken, { ...user, role: 'LENDER' })
         router.replace('/portfolio' as any)
       } catch (err: any) {
-        setError(err.response?.data?.error?.message || 'Registration failed')
+        setError(err.message || 'Registration failed')
       } finally {
         setLoading(false)
       }
@@ -104,6 +171,11 @@ export default function LenderSignupScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <FirebaseRecaptchaVerifierModal
+        ref={recaptchaVerifier}
+        firebaseConfig={auth.app.options as any}
+        firebaseVersion="9.23.0"
+      />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -183,8 +255,10 @@ export default function LenderSignupScreen() {
                 style={styles.otpInput}
               />
 
-              <TouchableOpacity style={styles.resendBtn}>
-                <Text style={styles.resendText}>Didn't receive code? Resend</Text>
+              <TouchableOpacity style={styles.resendBtn} onPress={handleResendOtp} disabled={resending}>
+                <Text style={[styles.resendText, resending && { opacity: 0.5 }]}>
+                  {resending ? 'Sending...' : "Didn't receive code? Resend"}
+                </Text>
               </TouchableOpacity>
             </View>
           )}

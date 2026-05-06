@@ -8,9 +8,14 @@ import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
+import { makeRedirectUri } from 'expo-auth-session'
+import Constants from 'expo-constants'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
 import { Alert } from 'react-native'
+import { auth } from '@/services/firebase'
+import { PhoneAuthProvider, signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
@@ -29,34 +34,54 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const recaptchaVerifier = React.useRef(null)
 
   // Google Auth
-  // Note: These should ideally be moved to mobile/.env
+  const redirectUri = makeRedirectUri()
+
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: '647993260711-jecc37q5dc70au6agl977qcs3jvnk1ii.apps.googleusercontent.com', // Replace with Android Specific ID
-    iosClientId:     '647993260711-jecc37q5dc70au6agl977qcs3jvnk1ii.apps.googleusercontent.com', // Replace with iOS Specific ID
-    webClientId:     '647993260711-jecc37q5dc70au6agl977qcs3jvnk1ii.apps.googleusercontent.com', // Web ID for Expo Go
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri,
   })
+
+  useEffect(() => {
+    if (request) console.log('[Google Auth] redirectUri =', request.redirectUri)
+  }, [request])
 
   useEffect(() => {
     if (response?.type === 'success') {
       const { authentication } = response
-      if (authentication?.idToken) {
-        handleGoogleLogin(authentication.idToken)
+      // expo-auth-session may return accessToken only; use whichever is present
+      const token = authentication?.idToken || authentication?.accessToken
+      if (token) {
+        handleGoogleLogin(token, !!authentication?.idToken)
+      } else {
+        setError('Google sign-in failed: no token returned.')
       }
+    } else if (response?.type === 'error') {
+      setError(response.error?.message || 'Google sign-in was cancelled or failed.')
     }
   }, [response])
 
-  const handleGoogleLogin = async (idToken: string) => {
+  const handleGoogleLogin = async (token: string, isIdToken = true) => {
     setLoading(true)
     setError('')
     try {
-      const res = await authApi.googleSignIn(idToken)
+      // Build Firebase credential — idToken preferred, accessToken as fallback
+      const credential = isIdToken
+        ? GoogleAuthProvider.credential(token)
+        : GoogleAuthProvider.credential(null, token)
+      const userCredential = await signInWithCredential(auth, credential)
+      const firebaseToken = await userCredential.user.getIdToken()
+
+      const res = await authApi.verifyFirebase(firebaseToken)
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(accessToken, refreshToken, user)
       router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Google login failed')
+      setError(err.message || 'Google login failed')
     } finally {
       setLoading(false)
     }
@@ -72,11 +97,25 @@ export default function LoginScreen() {
           setLoading(false)
           return
         }
-        await authApi.sendOtp(phone)
-        router.push({ pathname: '/(auth)/verify-otp', params: { phone, mode: 'login' } })
+        
+        try {
+          const phoneProvider = new PhoneAuthProvider(auth);
+          const verificationIdPromise = phoneProvider.verifyPhoneNumber(
+            `+91${phone}`,
+            recaptchaVerifier.current!
+          );
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
+          );
+          const verificationId = await Promise.race([verificationIdPromise, timeoutPromise]);
+          router.push({ pathname: '/(auth)/verify-otp', params: { phone, verificationId, mode: 'login' } })
+        } catch (err: any) {
+          setError(err.message || 'Failed to send OTP')
+        }
       } else {
-        if (!email) {
-          setError('Please enter your email address')
+        const cred = email.trim()
+        if (!cred) {
+          setError('Please enter your email or phone number')
           setLoading(false)
           return
         }
@@ -85,16 +124,24 @@ export default function LoginScreen() {
           setLoading(false)
           return
         }
-        const res = await authApi.loginWithPassword(email, password)
-        const { accessToken, refreshToken, user } = res.data.data
-        setAuth(accessToken, refreshToken, user)
-        // Save to secure store for biometric login
-        await SecureStore.setItemAsync('saved_email', email)
-        await SecureStore.setItemAsync('saved_password', password)
-        router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
+
+        try {
+          // Backend /auth/login accepts EMAIL or 10-digit PHONE in `identifier`.
+          const res = await authApi.loginWithPassword(cred, password)
+          const { accessToken, refreshToken, user } = res.data.data
+          setAuth(accessToken, refreshToken, user)
+
+          // Save to secure store for biometric login
+          await SecureStore.setItemAsync('saved_email', cred)
+          await SecureStore.setItemAsync('saved_password', password)
+
+          router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
+        } catch (err: any) {
+          setError(err.response?.data?.error?.message || err.message || 'Login failed')
+        }
       }
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Login failed')
+      setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
     }
@@ -114,9 +161,12 @@ export default function LoginScreen() {
         return
       }
 
+      const promptMessage = Platform.OS === 'ios' ? 'Login with Face ID' : 'Login with Biometric'
+      
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Login to GramChain',
+        promptMessage,
         fallbackLabel: 'Use Passcode',
+        disableDeviceFallback: false,
       })
 
       if (result.success) {
@@ -143,23 +193,15 @@ export default function LoginScreen() {
     }
   }
 
-  const handleDemoLogin = () => {
-    // Bypass backend entirely — inject a mock session and go to dashboard
-    const demoUser = {
-      id: 'demo-borrower-001',
-      phone: '8888888888',
-      name: 'Demo Borrower',
-      email: 'demo@borrower.com',
-      role: 'BORROWER' as const,
-      kycStatus: 'VERIFIED' as const,
-    }
-    setAuth('demo-token-borrower', 'demo-refresh-token', demoUser as any)
-    useAuthStore.getState().completeKyc()
-    router.replace('/(tabs)' as any)
-  }
+
 
   return (
     <SafeAreaView style={styles.container}>
+      <FirebaseRecaptchaVerifierModal
+        ref={recaptchaVerifier}
+        firebaseConfig={auth.app.options as any}
+        firebaseVersion="9.23.0"
+      />
       {/* Back button */}
       <TouchableOpacity
         style={styles.backBtn}
@@ -210,13 +252,13 @@ export default function LoginScreen() {
                 ) : (
                     <>
                         <Input
-                            label="Email Address"
-                            placeholder="example@mail.com"
+                            label="Email or Phone Number"
+                            placeholder="example@mail.com  or  9876543210"
                             value={email}
                             onChangeText={setEmail}
                             keyboardType="email-address"
                             autoCapitalize="none"
-                            icon={<Ionicons name="mail-outline" size={20} color={colors.gray[400]} />}
+                            icon={<Ionicons name="person-outline" size={20} color={colors.gray[400]} />}
                         />
                         <Input
                             label="Password"
@@ -251,8 +293,10 @@ export default function LoginScreen() {
                 style={styles.biometricBtn}
                 onPress={handleBiometricLogin}
             >
-                <Ionicons name="finger-print" size={20} color={colors.text.primary} />
-                <Text style={styles.biometricText}>Login with Fingerprint</Text>
+                <Ionicons name={Platform.OS === 'ios' ? "scan-outline" : "finger-print"} size={20} color={colors.text.primary} />
+                <Text style={styles.biometricText}>
+                    {Platform.OS === 'ios' ? 'Login with Face ID' : 'Login with Fingerprint'}
+                </Text>
             </TouchableOpacity>
 
             <View style={styles.divider}>
@@ -270,11 +314,7 @@ export default function LoginScreen() {
                 style={styles.googleBtn}
             />
 
-            {/* Demo Login — skip all auth for testing */}
-            <TouchableOpacity style={styles.demoBtn} onPress={handleDemoLogin}>
-              <Text style={styles.demoBtnText}>🚀  QUICK DEMO LOGIN</Text>
-              <Text style={styles.demoBtnSub}>Skip OTP — instant SHG dashboard</Text>
-            </TouchableOpacity>
+
         </View>
 
         <View style={styles.footer}>
@@ -435,25 +475,5 @@ const styles = StyleSheet.create({
   },
   modeTabTextActive: {
     color: colors.primary[700],
-  },
-  demoBtn: {
-    marginTop: 16,
-    backgroundColor: colors.primary[50],
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.primary[200],
-  },
-  demoBtnText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.primary[700],
-    letterSpacing: 0.5,
-  },
-  demoBtnSub: {
-    fontSize: 11,
-    color: colors.text.secondary,
-    marginTop: 4,
   },
 })

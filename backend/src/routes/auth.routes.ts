@@ -44,7 +44,19 @@ router.post('/register', AuthController.register)
 /** @route POST /auth/refresh */
 router.post('/refresh', AuthController.refreshToken)
 
+/** @route POST /auth/logout — N1: invalidates refresh tokens + clears FCM */
+router.post('/logout', authenticate, AuthController.logout)
+
 /** @route GET /auth/me */
 router.get('/me', authenticate, AuthController.getMe)
+
+/** @route POST /auth/set-password */
+router.post('/set-password', authenticate, AuthController.setPassword)
+
+/** @route GET /auth/check-phone */
+router.get('/check-phone', AuthController.checkPhone)
+
+/** @route POST /auth/firebase */
+router.post('/firebase', AuthController.verifyFirebase)
 
 export default router

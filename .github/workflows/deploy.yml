@@ -1,0 +1,123 @@
+name: GramChain Production CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    name: Backend Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run Prisma Generate
+        working-directory: ./backend
+        run: npx prisma generate
+
+      - name: Build TypeScript
+        working-directory: ./backend
+        run: npm run build
+
+      # Add `npm run lint` and `npm test` here when tests are written for the backend
+
+  smart-contract-tests:
+    name: Smart Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: blockchain/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ./blockchain
+        run: npm ci
+
+      - name: Run Hardhat Tests
+        working-directory: ./blockchain
+        run: npx hardhat test
+
+  # ── Option A: Railway auto-deploy (recommended for staging) ─
+  deploy-railway:
+    name: Deploy to Railway (Staging)
+    needs: [lint-and-test, smart-contract-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy Backend to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service gramchain-backend --detach
+          echo "✅ Railway deployment triggered — monitor at https://railway.app"
+
+  # ── Option B: Self-hosted Docker Compose (production VPS) ──
+  # Uncomment and configure if you are deploying to your own server
+  # instead of Railway. Requires PROD_SERVER_SSH_KEY, PROD_SERVER_IP,
+  # and PROD_SERVER_USER secrets in GitHub.
+  deploy-vps:
+    name: Deploy to VPS (Production)
+    needs: [lint-and-test, smart-contract-tests]
+    # Change 'false' to the correct branch condition when ready for VPS deploy:
+    #   github.ref == 'refs/heads/production' && github.event_name == 'push'
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+
+      - name: Deploy via Docker Compose
+        env:
+          HOST: ${{ secrets.PROD_SERVER_IP }}
+          USER: ${{ secrets.PROD_SERVER_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $USER@$HOST << 'EOF'
+            set -e
+            cd /opt/gramchain
+            git pull origin main
+
+            cd backend
+            npm ci --production
+            npx prisma generate
+            npx prisma migrate deploy
+            cd ..
+
+            cd deployment
+            docker-compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            docker image prune -f
+            echo "✅ VPS deploy complete"
+          EOF

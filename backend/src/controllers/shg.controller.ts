@@ -64,3 +64,51 @@ export const getMeetings = async (req: AuthenticatedRequest, res: Response): Pro
   const meetings = await SHGService.getSHGMeetings(req.params.id as string)
   sendSuccess(res, meetings)
 }
+
+/** POST /shg/:id/invite — Generate invite code for SHG */
+export const generateInviteCode = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const result = await SHGService.generateInviteCodeForSHG(req.params.id as string, req.userId!)
+  sendSuccess(res, result)
+}
+
+/** POST /shg/join-by-code — Join SHG by invite code */
+export const joinByInviteCode = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { inviteCode } = req.body
+  if (!inviteCode) {
+    sendError(res, 'MISSING_FIELDS', 'inviteCode is required')
+    return
+  }
+  const membership = await SHGService.joinSHGByInviteCode(req.userId!, inviteCode)
+  sendSuccess(res, membership, 201)
+}
+
+/** DELETE /shg/:id/members/:userId — Remove a member (leader only) */
+export const removeMember = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const shgId = req.params.id as string
+  const targetUserId = req.params.userId as string
+  const result = await SHGService.removeMember(shgId, targetUserId, req.userId!)
+  sendSuccess(res, result)
+}
+
+/** POST /shg/:id/dissolve — Leader initiates dissolution vote */
+export const initiateDissolve = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const result = await SHGService.initiateDissolve(req.params.id as string, req.userId!)
+  sendSuccess(res, result)
+}
+
+/** POST /shg/:id/dissolve/vote — Member casts vote { vote: boolean } */
+export const voteDissolve = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { vote } = req.body
+  if (typeof vote !== 'boolean') {
+    sendError(res, 'INVALID_VOTE', 'vote must be true or false')
+    return
+  }
+  const result = await SHGService.voteDissolve(req.params.id as string, req.userId!, vote)
+  sendSuccess(res, result)
+}
+
+/** GET /shg/:id/dissolve — Get dissolution vote status */
+export const getDissolveStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const result = await SHGService.getDissolveStatus(req.params.id as string, req.userId!)
+  sendSuccess(res, result)
+}

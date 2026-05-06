@@ -7,6 +7,7 @@ import {
   View, Text, TouchableOpacity, ActivityIndicator,
   StyleSheet, Animated, ViewStyle, TextStyle, DimensionValue,
 } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { colors }  from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
 
@@ -210,22 +211,26 @@ export const Skeleton = ({ width = '100%', height = 16, radius: r = 8, style }: 
 
   useEffect(() => {
     Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ])
+      Animated.timing(anim, { toValue: 1, duration: 1200, useNativeDriver: true })
     ).start()
   }, [])
 
-  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.9] })
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-200, 300]
+  })
 
   return (
-    <Animated.View
-      style={[
-        { width, height, borderRadius: r, backgroundColor: colors.gray[200], opacity },
-        style,
-      ]}
-    />
+    <View style={[{ width, height, borderRadius: r, backgroundColor: colors.gray[200], overflow: 'hidden' }, style]}>
+      <Animated.View style={[{ width: '200%', height: '100%' }, { transform: [{ translateX }] }]}>
+        <LinearGradient
+          colors={['transparent', 'rgba(255,255,255,0.6)', 'transparent']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </View>
   )
 }
 

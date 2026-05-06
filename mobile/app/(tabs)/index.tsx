@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react'
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Animated,
-  TouchableOpacity, Dimensions,
+  TouchableOpacity, Dimensions, Modal, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
 import { router } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth.store'
 import { useLoanStore } from '@/store/loan.store'
-import { loanApi, shgApi } from '@/services/api'
+import { loanApi, shgApi, notificationApi } from '@/services/api'
+
 import { LoanCard } from '@/components/ui/LoanCard'
 import {
   Card, StatCard, QuickAction, Badge, Skeleton,
@@ -24,9 +26,14 @@ export default function Dashboard() {
   const { user }  = useAuthStore()
   const { myLoans, setMyLoans, activeLoan } = useLoanStore()
 
-  const [refreshing, setRefreshing] = useState(false)
-  const [shgData, setShgData]       = useState<any>(null)
-  const [loading, setLoading]       = useState(true)
+  const [refreshing, setRefreshing]         = useState(false)
+  const [shgData, setShgData]               = useState<any>(null)
+  const [loading, setLoading]               = useState(true)
+  const [notifPanelVisible, setNotifPanel]  = useState(false)
+  const [notifications, setNotifications]   = useState<any[]>([])
+  const [unreadCount, setUnreadCount]       = useState(0)
+  const [approvingLoan, setApprovingLoan]     = useState<string | null>(null)
+  const [votingDissolveNotif, setVotingDN]   = useState<string | null>(null)
 
   // Staggered entrance animations
   const greetAnim   = useRef(new Animated.Value(0)).current
@@ -52,13 +59,18 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      const [loansRes, shgRes] = await Promise.all([
+      const [loansRes, shgRes, notifRes] = await Promise.all([
         loanApi.getMyLoans(),
         shgApi.getMyGroups(),
+        notificationApi.getAll().catch(() => null),
       ])
       setMyLoans(loansRes.data.data)
       if (shgRes.data.data.length > 0) {
         setShgData(shgRes.data.data[0].shg)
+      }
+      if (notifRes) {
+        setNotifications(notifRes.data.data.items || [])
+        setUnreadCount(notifRes.data.data.unreadCount || 0)
       }
     } catch (e) {
       console.error(e)
@@ -68,9 +80,70 @@ export default function Dashboard() {
     }
   }
 
+  const handleOpenNotif = async () => {
+    setNotifPanel(true)
+  }
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationApi.markAllRead()
+      setUnreadCount(0)
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+    } catch (e) { /* non-fatal */ }
+  }
+
+  const handleApproveLoan = async (loanId: string, notifId: string) => {
+    Alert.alert('Approve Loan', 'Are you sure you want to approve this loan request?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Approve', style: 'default',
+        onPress: async () => {
+          setApprovingLoan(loanId)
+          try {
+            await loanApi.approveLoan(loanId)
+            await notificationApi.markOneRead(notifId)
+            setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, isRead: true } : n))
+            setUnreadCount(prev => Math.max(0, prev - 1))
+            Alert.alert('Done', 'Loan approved successfully.')
+            loadData()
+          } catch (err: any) {
+            Alert.alert('Error', err.response?.data?.error?.message || 'Failed to approve loan.')
+          } finally {
+            setApprovingLoan(null)
+          }
+        }
+      }
+    ])
+  }
+
+  const handleVoteFromNotif = async (shgId: string, vote: boolean, notifId: string) => {
+    const key = notifId + (vote ? '-yes' : '-no')
+    setVotingDN(key)
+    try {
+      const res = await shgApi.voteDissolve(shgId, vote)
+      await notificationApi.markOneRead(notifId)
+      setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, isRead: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+      const { status, message } = res.data.data
+      Alert.alert(
+        status === 'DISSOLVED' ? 'Group Dissolved' : status === 'CANCELLED' ? 'Vote Cancelled' : 'Vote Recorded',
+        message
+      )
+      loadData()
+    } catch (e: any) {
+      Alert.alert('Error', e.response?.data?.error?.message || 'Failed to submit vote.')
+    } finally {
+      setVotingDN(null)
+    }
+  }
+
   useEffect(() => {
-    loadData()
-  }, [])
+    if (user) {
+      loadData()
+    } else {
+      setLoading(false)
+    }
+  }, [user])
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -115,9 +188,13 @@ export default function Dashboard() {
             <Text style={styles.userName}>{userName}</Text>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notifBtn} accessibilityLabel="Notifications">
-              <Text style={styles.notifIcon}>🔔</Text>
-              <View style={styles.notifDot} />
+            <TouchableOpacity style={styles.notifBtn} accessibilityLabel="Notifications" onPress={handleOpenNotif}>
+              <Ionicons name="notifications-outline" size={22} color={colors.text.primary} />
+              {unreadCount > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -259,6 +336,91 @@ export default function Dashboard() {
           <Text style={styles.versionText}>GramChain v1.0 — Powered by Polygon</Text>
         </View>
       </ScrollView>
+
+      {/* ─── Notification Panel Modal ──────────────── */}
+      <Modal
+        visible={notifPanelVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setNotifPanel(false)}
+      >
+        <SafeAreaView style={styles.notifModal}>
+          <View style={styles.notifModalHeader}>
+            <Text style={styles.notifModalTitle}>Notifications</Text>
+            <View style={styles.notifModalActions}>
+              {unreadCount > 0 && (
+                <TouchableOpacity onPress={handleMarkAllRead} style={styles.markReadBtn}>
+                  <Text style={styles.markReadText}>Mark all read</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => setNotifPanel(false)} style={styles.notifCloseBtn}>
+                <Ionicons name="close" size={20} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.notifList}>
+            {notifications.length === 0 ? (
+              <View style={styles.notifEmpty}>
+                <Text style={styles.notifEmptyIcon}>🔔</Text>
+                <Text style={styles.notifEmptyText}>You're all caught up!</Text>
+              </View>
+            ) : (
+              notifications.map(notif => (
+                <View key={notif.id} style={[styles.notifItem, !notif.isRead && styles.notifItemUnread]}>
+                  <View style={styles.notifItemTop}>
+                    <Text style={styles.notifItemIcon}>
+                      {notif.type === 'LOAN_APPROVAL_REQUEST' ? '💸'
+                        : notif.type === 'LOAN_APPROVED' ? '✅'
+                        : notif.type === 'MEMBER_REMOVED' ? '🚫'
+                        : notif.type === 'DISSOLUTION_VOTE' ? '⚠️'
+                        : '🔔'}
+                    </Text>
+                    <View style={styles.notifItemContent}>
+                      <Text style={styles.notifItemTitle}>{notif.title}</Text>
+                      <Text style={styles.notifItemBody}>{notif.body}</Text>
+                      <Text style={styles.notifItemTime}>
+                        {new Date(notif.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    {!notif.isRead && <View style={styles.unreadDot} />}
+                  </View>
+                  {notif.type === 'LOAN_APPROVAL_REQUEST' && notif.data?.loanId && !notif.isRead && (
+                    <TouchableOpacity
+                      style={[styles.approveBtn, approvingLoan === notif.data.loanId && { opacity: 0.6 }]}
+                      onPress={() => handleApproveLoan(notif.data.loanId, notif.id)}
+                      disabled={approvingLoan === notif.data.loanId}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                      <Text style={styles.approveBtnText}>
+                        {approvingLoan === notif.data.loanId ? 'Approving...' : 'Approve Loan'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {notif.type === 'DISSOLUTION_VOTE' && notif.data?.shgId && !notif.isRead && (
+                    <View style={styles.dissolveNotifRow}>
+                      <TouchableOpacity
+                        style={[styles.dissolveYesBtn, votingDissolveNotif === notif.id + '-yes' && { opacity: 0.6 }]}
+                        onPress={() => handleVoteFromNotif(notif.data.shgId, true, notif.id)}
+                        disabled={!!votingDissolveNotif}
+                      >
+                        <Text style={styles.dissolveVoteBtnText}>✅ Yes, Dissolve</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.dissolveNoBtn, votingDissolveNotif === notif.id + '-no' && { opacity: 0.6 }]}
+                        onPress={() => handleVoteFromNotif(notif.data.shgId, false, notif.id)}
+                        disabled={!!votingDissolveNotif}
+                      >
+                        <Text style={styles.dissolveVoteBtnText}>🚫 No, Keep</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -322,6 +484,177 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger[500],
     borderWidth:     2,
     borderColor:     colors.surface,
+  },
+  notifBadge: {
+    position:        'absolute',
+    top:             6,
+    right:           6,
+    minWidth:        18,
+    height:          18,
+    borderRadius:    9,
+    backgroundColor: colors.danger[500],
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingHorizontal: 3,
+    borderWidth:     1.5,
+    borderColor:     colors.surface,
+  },
+  notifBadgeText: {
+    fontSize:    10,
+    fontWeight:  '800',
+    color:       '#fff',
+    lineHeight:  12,
+  },
+  // ── Notification Panel Modal ──
+  notifModal: {
+    flex:            1,
+    backgroundColor: colors.background,
+  },
+  notifModalHeader: {
+    flexDirection:   'row',
+    justifyContent:  'space-between',
+    alignItems:      'center',
+    paddingHorizontal: 20,
+    paddingVertical:  16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  notifModalTitle: {
+    fontSize:   20,
+    fontWeight: '800',
+    color:      colors.text.primary,
+  },
+  notifModalActions: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           8,
+  },
+  markReadBtn: {
+    paddingHorizontal: 10,
+    paddingVertical:   6,
+    backgroundColor:   colors.primary[50],
+    borderRadius:      8,
+  },
+  markReadText: {
+    fontSize:   12,
+    fontWeight: '700',
+    color:      colors.primary[700],
+  },
+  notifCloseBtn: {
+    width:           36,
+    height:          36,
+    borderRadius:    10,
+    backgroundColor: colors.gray[100],
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  notifList: {
+    padding:    16,
+    paddingBottom: 60,
+    gap:        10,
+  },
+  notifEmpty: {
+    alignItems:    'center',
+    paddingTop:    80,
+    gap:           12,
+  },
+  notifEmptyIcon: {
+    fontSize: 48,
+  },
+  notifEmptyText: {
+    fontSize:   16,
+    fontWeight: '600',
+    color:      colors.text.secondary,
+  },
+  notifItem: {
+    backgroundColor: colors.surface,
+    borderRadius:    14,
+    padding:         14,
+    borderWidth:     1,
+    borderColor:     colors.gray[100],
+    ...shadows.sm,
+  },
+  notifItemUnread: {
+    borderColor:     colors.primary[200],
+    backgroundColor: colors.primary[50],
+  },
+  notifItemTop: {
+    flexDirection: 'row',
+    alignItems:    'flex-start',
+    gap:           10,
+  },
+  notifItemIcon: {
+    fontSize:  22,
+    marginTop:  2,
+  },
+  notifItemContent: {
+    flex: 1,
+  },
+  notifItemTitle: {
+    fontSize:    14,
+    fontWeight:  '700',
+    color:       colors.text.primary,
+    marginBottom: 2,
+  },
+  notifItemBody: {
+    fontSize:   13,
+    color:      colors.text.secondary,
+    lineHeight: 18,
+  },
+  notifItemTime: {
+    fontSize:   11,
+    color:      colors.text.tertiary,
+    marginTop:  4,
+  },
+  unreadDot: {
+    width:           8,
+    height:          8,
+    borderRadius:    4,
+    backgroundColor: colors.primary[500],
+    marginTop:       4,
+  },
+  approveBtn: {
+    marginTop:       10,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    gap:             6,
+    backgroundColor: colors.primary[600],
+    borderRadius:    10,
+    paddingVertical: 10,
+  },
+  approveBtnText: {
+    fontSize:   14,
+    fontWeight: '700',
+    color:      '#fff',
+  },
+  dissolveNotifRow: {
+    flexDirection: 'row',
+    gap:           8,
+    marginTop:     10,
+  },
+  dissolveYesBtn: {
+    flex:            1,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingVertical: 9,
+    borderRadius:    10,
+    backgroundColor: '#16a34a',
+  },
+  dissolveNoBtn: {
+    flex:            1,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingVertical: 9,
+    borderRadius:    10,
+    backgroundColor: colors.danger[600],
+  },
+  dissolveVoteBtnText: {
+    fontSize:   13,
+    fontWeight: '700',
+    color:      '#fff',
   },
 
   // ── Hero Card ──

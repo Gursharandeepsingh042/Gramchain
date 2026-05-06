@@ -2,7 +2,7 @@
   "expo": {
     "name": "GramChain",
     "slug": "gramchain",
-    "owner": "gramchain",
+    "owner": "sharan66",
     "version": "1.0.0",
     "runtimeVersion": {
       "policy": "appVersion"
@@ -20,15 +20,26 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.gramchain.app",
-      "buildNumber": "1"
+      "bundleIdentifier": "com.gramchain.gramchain",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "buildNumber": "1",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.51986108180-0rderk57ou6h3k2hf9k2g64bq5f4kp5h"
+            ]
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#16a34a"
       },
-      "package": "com.gramchain.app",
+      "package": "com.gramchain.gramchain",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "permissions": [
         "USE_BIOMETRIC",
@@ -45,6 +56,9 @@
     "scheme": "gramchain",
     "experiments": {
       "typedRoutes": true
+    },
+    "updates": {
+      "url": "https://u.expo.dev/aa19570c-9cf6-4994-98cc-8684daa0dc4f"
     },
     "extra": {
       "router": {},

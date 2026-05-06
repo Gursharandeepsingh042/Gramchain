@@ -45,16 +45,18 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
 
 /**
  * POST /auth/login
- * Body: { email: string, password: string }
+ * Body: { identifier: string, password: string }   // identifier = email OR 10-digit phone
+ *       (also accepts { email, password } for backward compatibility)
  */
 export const loginWithPassword = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { email, password } = req.body
-    if (!email || !password) {
-      sendError(res, 'MISSING_FIELDS', 'email and password are required')
+    const { identifier, email, password } = req.body
+    const cred = identifier || email
+    if (!cred || !password) {
+      sendError(res, 'MISSING_FIELDS', 'identifier (email or phone) and password are required')
       return
     }
-    const result = await AuthService.loginWithPassword(email, password)
+    const result = await AuthService.loginWithPassword(cred, password)
     sendSuccess(res, result, 200)
   } catch (error) {
     next(error)
@@ -98,6 +100,24 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
 }
 
 /**
+ * POST /auth/logout
+ * N1: Invalidates refresh tokens and clears the user's FCM push token.
+ * Auth required — derives userId from the JWT.
+ */
+export const logout = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.userId) {
+      sendError(res, 'UNAUTHENTICATED', 'Not authenticated', 401)
+      return
+    }
+    await AuthService.logout(req.userId)
+    sendSuccess(res, { message: 'Logged out' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
  * POST /auth/google
  * Body: { idToken: string }
  */
@@ -131,6 +151,58 @@ export const getMe = async (req: AuthenticatedRequest, res: Response, next: Next
       },
     })
     sendSuccess(res, user)
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * POST /auth/set-password
+ * Body: { password: string }
+ * Allows OTP/Google users to set or update their app password.
+ */
+export const setPassword = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { password } = req.body
+    await AuthService.setPassword(req.userId!, password)
+    sendSuccess(res, { message: 'Password updated successfully' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * GET /auth/check-phone?phone=XXXXXXXXXX
+ * Returns { exists: boolean } — used by signup screen to detect returning users
+ */
+export const checkPhone = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { phone } = req.query as { phone?: string }
+    if (!phone || !/^\d{10}$/.test(phone)) {
+      sendError(res, 'INVALID_PHONE', 'Phone must be a 10-digit Indian mobile number')
+      return
+    }
+    const { prisma } = await import('@/lib/prisma')
+    const user = await prisma.user.findUnique({ where: { phone }, select: { id: true, name: true } })
+    sendSuccess(res, { exists: !!user, hasName: !!user?.name })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * POST /auth/firebase
+ * Body: { idToken: string, name?: string, groupCode?: string }
+ */
+export const verifyFirebase = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { idToken, name, groupCode, password } = req.body
+    if (!idToken) {
+      sendError(res, 'MISSING_TOKEN', 'idToken is required')
+      return
+    }
+    const result = await AuthService.verifyFirebaseToken(idToken, name, groupCode, password)
+    sendSuccess(res, result, 200)
   } catch (error) {
     next(error)
   }

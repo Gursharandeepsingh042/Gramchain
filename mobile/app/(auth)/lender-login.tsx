@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react'
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, Image, ScrollView, Animated
+  View, Text, StyleSheet,
+  TouchableOpacity, ScrollView, Animated, Alert
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
-import { Alert } from 'react-native'
+import { makeRedirectUri } from 'expo-auth-session'
+import Constants from 'expo-constants'
+import { auth } from '@/services/firebase'
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth'
+import * as SecureStore from 'expo-secure-store'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
-import { radius, shadows, spacing } from '@/constants/design'
+import { radius, shadows } from '@/constants/design'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -41,32 +45,49 @@ export default function LenderLoginScreen() {
     ]).start()
   }, [])
 
-  // Google Auth
+  // Google Auth — same Firebase-backed flow as borrower login
+  const isExpoGo = Constants.appOwnership === 'expo'
+  const redirectUri = isExpoGo
+    ? 'https://auth.expo.io/@sharan66/gramchain'
+    : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
+
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: '647993260711-jecc37q5dc70au6agl977qcs3jvnk1ii.apps.googleusercontent.com',
-    iosClientId:     '647993260711-jecc37q5dc70au6agl977qcs3jvnk1ii.apps.googleusercontent.com',
-    webClientId:     '647993260711-jecc37q5dc70au6agl977qcs3jvnk1ii.apps.googleusercontent.com',
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId:     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    webClientId:     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri,
   })
 
   useEffect(() => {
     if (response?.type === 'success') {
       const { authentication } = response
-      if (authentication?.idToken) {
-        handleGoogleLogin(authentication.idToken)
+      const token = authentication?.idToken || authentication?.accessToken
+      if (token) {
+        handleGoogleLogin(token, !!authentication?.idToken)
+      } else {
+        setError('Google sign-in failed: no token returned.')
       }
+    } else if (response?.type === 'error') {
+      setError(response.error?.message || 'Google sign-in was cancelled or failed.')
     }
   }, [response])
 
-  const handleGoogleLogin = async (idToken: string) => {
+  const handleGoogleLogin = async (token: string, isIdToken = true) => {
     setLoading(true)
     setError('')
     try {
-      const res = await authApi.googleSignIn(idToken)
+      const credential = isIdToken
+        ? GoogleAuthProvider.credential(token)
+        : GoogleAuthProvider.credential(null, token)
+      const userCredential = await signInWithCredential(auth, credential)
+      const firebaseToken = await userCredential.user.getIdToken()
+
+      const res = await authApi.verifyFirebase(firebaseToken)
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(accessToken, refreshToken, { ...user, role: 'LENDER' })
       router.replace('/portfolio' as any)
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Google login failed')
+      setError(err.message || 'Google login failed')
     } finally {
       setLoading(false)
     }
@@ -91,8 +112,8 @@ export default function LenderLoginScreen() {
     setLoading(true)
     setError('')
 
-    if (!email) {
-      setError('Please enter your email address')
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Please enter a valid email address')
       setLoading(false)
       return
     }
@@ -103,12 +124,18 @@ export default function LenderLoginScreen() {
     }
 
     try {
+      // Use backend password login (credentials are stored in backend DB, not Firebase)
       const res = await authApi.loginWithPassword(email, password)
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(accessToken, refreshToken, { ...user, role: 'LENDER' })
+
+      // Save to secure store for biometric login
+      await SecureStore.setItemAsync('saved_email', email)
+      await SecureStore.setItemAsync('saved_password', password)
+
       router.replace('/portfolio' as any)
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Login failed')
+      setError(err.response?.data?.error?.message || err.message || 'Invalid email or password')
     } finally {
       setLoading(false)
     }

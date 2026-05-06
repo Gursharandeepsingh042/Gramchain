@@ -46,4 +46,6 @@ mobile/*.mobileprovision
 
 # Backend specific
 backend/dist/
-backend/prisma/migrations/
+# NOTE: prisma/migrations/ MUST be committed (required by `prisma migrate deploy`).
+# Only the lockfile inside it ever changes per-machine.
+backend/firebase-service-account.json

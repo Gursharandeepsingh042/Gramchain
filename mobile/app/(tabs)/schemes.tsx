@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
@@ -99,6 +99,13 @@ const SCHEMES = [
 
 export default function SchemesScreen() {
     const [selectedScheme, setSelectedScheme] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        // Simulate network delay for schemes fetch
+        const timer = setTimeout(() => setLoading(false), 1000);
+        return () => clearTimeout(timer);
+    }, []);
 
     const openSchemeLink = (url: string) => {
         Linking.openURL(url).catch((err) => console.error('An error occurred', err));
@@ -112,24 +119,39 @@ export default function SchemesScreen() {
             </View>
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-                {SCHEMES.map((scheme) => (
-                    <TouchableOpacity
-                        key={scheme.id}
-                        style={[styles.card, shadows.sm]}
-                        onPress={() => setSelectedScheme(scheme)}
-                    >
-                        <View style={styles.cardHeader}>
-                            <View style={styles.iconContainer}>
-                                <Text style={styles.cardIcon}>{scheme.icon}</Text>
+                {loading ? (
+                    // Skeleton loading state
+                    [1, 2, 3, 4, 5].map((i) => (
+                        <View key={`skeleton-${i}`} style={[styles.card, shadows.sm]}>
+                            <View style={styles.cardHeader}>
+                                <View style={[styles.iconContainer, { backgroundColor: colors.gray[100] }]} />
+                                <View style={styles.cardInfo}>
+                                    <View style={{ backgroundColor: colors.gray[200], height: 18, width: '60%', borderRadius: 4, marginBottom: 8 }} />
+                                    <View style={{ backgroundColor: colors.gray[100], height: 14, width: '80%', borderRadius: 4 }} />
+                                </View>
                             </View>
-                            <View style={styles.cardInfo}>
-                                <Text style={styles.cardTitle}>{scheme.name}</Text>
-                                <Text style={styles.cardChevron} numberOfLines={1}>{scheme.fullName}</Text>
-                            </View>
-                            <Text style={styles.chevron}>»</Text>
                         </View>
-                    </TouchableOpacity>
-                ))}
+                    ))
+                ) : (
+                    SCHEMES.map((scheme) => (
+                        <TouchableOpacity
+                            key={scheme.id}
+                            style={[styles.card, shadows.sm]}
+                            onPress={() => setSelectedScheme(scheme)}
+                        >
+                            <View style={styles.cardHeader}>
+                                <View style={styles.iconContainer}>
+                                    <Text style={styles.cardIcon}>{scheme.icon}</Text>
+                                </View>
+                                <View style={styles.cardInfo}>
+                                    <Text style={styles.cardTitle}>{scheme.name}</Text>
+                                    <Text style={styles.cardChevron} numberOfLines={1}>{scheme.fullName}</Text>
+                                </View>
+                                <Text style={styles.chevron}>»</Text>
+                            </View>
+                        </TouchableOpacity>
+                    ))
+                )}
             </ScrollView>
 
             <Modal

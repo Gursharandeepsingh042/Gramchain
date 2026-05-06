@@ -5,35 +5,45 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
  * @title CreditScoreRegistry
- * @notice Immutable on-chain credit score history per member wallet
- * @dev Only authorized ML Oracle can write scores. Public read for transparency.
+ * @notice Append-only on-chain credit score history per member wallet
+ * @dev Only authorized ML_ORACLE_ROLE (backend) can write scores. Public read.
+ *      Score range: 300–900 (uint16-safe). Each entry is timestamped.
+ *      Used by LoanManager to query borrower creditworthiness.
  */
 contract CreditScoreRegistry is AccessControl {
     bytes32 public constant ML_ORACLE_ROLE = keccak256("ML_ORACLE_ROLE");
 
     struct ScoreEntry {
-        uint256 score;       // 300–900 scale
-        string riskBand;     // LOW / MEDIUM / HIGH
+        uint16 score;           // 300–900 scale
+        string riskBand;        // "LOW" / "MEDIUM" / "HIGH"
         uint256 timestamp;
-        bytes32 modelVersion;
+        bytes32 modelVersion;   // Hash of the ML model version
     }
 
-    // member address → historical scores
+    // member address → historical scores (append-only)
     mapping(address => ScoreEntry[]) private scoreHistory;
 
-    // Latest score per member (for quick lookup)
+    // Latest score per member (quick lookup)
     mapping(address => ScoreEntry) public latestScore;
+
+    // Track total entries for analytics
+    uint256 public totalEntries;
 
     event ScoreRecorded(
         address indexed member,
-        uint256 score,
+        uint16 score,
         string riskBand,
+        bytes32 modelVersion,
         uint256 timestamp
     );
 
-    constructor(address admin, address oracle) {
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(ML_ORACLE_ROLE, oracle);
+    /**
+     * @param _admin  Admin address (deployer)
+     * @param _oracle ML oracle / backend address that writes scores
+     */
+    constructor(address _admin, address _oracle) {
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(ML_ORACLE_ROLE, _oracle);
     }
 
     /**
@@ -45,7 +55,7 @@ contract CreditScoreRegistry is AccessControl {
      */
     function recordScore(
         address member,
-        uint256 score,
+        uint16 score,
         string calldata riskBand,
         bytes32 modelVer
     ) external onlyRole(ML_ORACLE_ROLE) {
@@ -60,8 +70,9 @@ contract CreditScoreRegistry is AccessControl {
 
         scoreHistory[member].push(entry);
         latestScore[member] = entry;
+        totalEntries++;
 
-        emit ScoreRecorded(member, score, riskBand, block.timestamp);
+        emit ScoreRecorded(member, score, riskBand, modelVer, block.timestamp);
     }
 
     /**
@@ -80,5 +91,13 @@ contract CreditScoreRegistry is AccessControl {
      */
     function getScoreCount(address member) external view returns (uint256) {
         return scoreHistory[member].length;
+    }
+
+    /**
+     * @notice Get the latest score for a member (convenience)
+     */
+    function getLatestScore(address member) external view returns (uint16 score, string memory riskBand) {
+        ScoreEntry storage entry = latestScore[member];
+        return (entry.score, entry.riskBand);
     }
 }

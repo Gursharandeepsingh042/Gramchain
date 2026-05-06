@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, ScrollView, Animated
+  TouchableOpacity, ScrollView, Animated, Alert
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -12,6 +12,15 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
+import { auth } from '@/services/firebase'
+import { PhoneAuthProvider, signInWithCredential, EmailAuthProvider, linkWithCredential, sendEmailVerification, GoogleAuthProvider } from 'firebase/auth'
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
+import * as Google from 'expo-auth-session/providers/google'
+import * as WebBrowser from 'expo-web-browser'
+import { makeRedirectUri } from 'expo-auth-session'
+import Constants from 'expo-constants'
+
+WebBrowser.maybeCompleteAuthSession()
 
 type SignupStep = 1 | 2 | 3
 
@@ -32,22 +41,95 @@ export default function SignupScreen() {
   })
   
   const [otp, setOtp] = useState('')
+  const [verificationId, setVerificationId] = useState('')
+  const recaptchaVerifier = React.useRef(null)
+
+  // Google Auth
+  const redirectUri = makeRedirectUri()
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri,
+  })
+
+  // Wait for Google Auth Response
+
+  React.useEffect(() => {
+    if (response?.type === 'success') {
+      const { authentication } = response
+      const token = authentication?.idToken || authentication?.accessToken
+      if (token) {
+        handleGoogleSignup(token, !!authentication?.idToken)
+      } else {
+        setError('Google sign-up failed: no token returned.')
+      }
+    } else if (response?.type === 'error') {
+      setError(response.error?.message || 'Google sign-up was cancelled or failed.')
+    }
+  }, [response])
+
+  const handleGoogleSignup = async (token: string, isIdToken = true) => {
+    setLoading(true)
+    setError('')
+    try {
+      const credential = isIdToken
+        ? GoogleAuthProvider.credential(token)
+        : GoogleAuthProvider.credential(null, token)
+      const userCredential = await signInWithCredential(auth, credential);
+      const firebaseToken = await userCredential.user.getIdToken();
+
+      const res = await authApi.verifyFirebase(firebaseToken)
+      const { accessToken, refreshToken, user } = res.data.data
+      setAuth(accessToken, refreshToken, user)
+      router.replace('/kyc')
+    } catch (err: any) {
+      setError(err.message || 'Google signup failed')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleContinue = async () => {
     setError('')
     
-    if (step === 1) {
+      if (step === 1) {
       if (formData.phone.length !== 10) {
         setError('Please enter a valid 10-digit phone number')
         return
       }
-      
+
       setLoading(true)
       try {
-        await authApi.sendOtp(formData.phone)
+        // Check if phone already registered — redirect returning users to login
+        const checkRes = await authApi.checkPhone(formData.phone)
+        if (checkRes.data.data.exists) {
+          Alert.alert(
+            'Already Registered',
+            'This number is already linked to a GramChain account. Please login instead.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Login', onPress: () => router.replace('/login') },
+            ]
+          )
+          setLoading(false)
+          return
+        }
+
+        const phoneProvider = new PhoneAuthProvider(auth);
+        const otpPromise = phoneProvider.verifyPhoneNumber(
+          `+91${formData.phone}`,
+          recaptchaVerifier.current!
+        );
+        const otpTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
+        );
+        const vId = await Promise.race([otpPromise, otpTimeout]);
+        setVerificationId(vId);
         setStep(2)
       } catch (err: any) {
-        setError(err.response?.data?.error?.message || 'Failed to send OTP')
+        setError(err.message || 'Failed to send OTP')
       } finally {
         setLoading(false)
       }
@@ -58,10 +140,26 @@ export default function SignupScreen() {
       }
       setLoading(true)
       try {
-        await authApi.verifyOtp(formData.phone, otp)
+        const credential = PhoneAuthProvider.credential(verificationId, otp);
+        const userCredential = await signInWithCredential(auth, credential);
+        // Verify with backend to check if user actually exists (race condition guard)
+        const idToken = await userCredential.user.getIdToken()
+        const checkRes = await authApi.verifyFirebase(idToken)
+        if (!checkRes.data.data.isNewUser) {
+          // Returning user — skip registration form, go directly to dashboard
+          const { accessToken, refreshToken, user } = checkRes.data.data
+          setAuth(accessToken, refreshToken, user)
+          router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
+          return
+        }
         setStep(3)
       } catch (err: any) {
-        setError(err.response?.data?.error?.message || 'Invalid OTP')
+        const msg = err.code === 'auth/invalid-verification-code'
+          ? 'Incorrect OTP. Please check and try again.'
+          : err.code === 'auth/code-expired'
+          ? 'OTP expired. Tap back and request a new one.'
+          : err.message || 'Invalid OTP'
+        setError(msg)
       } finally {
         setLoading(false)
       }
@@ -70,8 +168,8 @@ export default function SignupScreen() {
         setError('Please fill in all required fields')
         return
       }
-      if (!/^[^\s@]+@gmail\.com$/i.test(formData.email)) {
-        setError('Gmail not applicable. Please use a valid @gmail.com address.')
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(formData.email)) {
+        setError('Please use a valid email address.')
         return
       }
       if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(formData.password)) {
@@ -85,17 +183,37 @@ export default function SignupScreen() {
       
       setLoading(true)
       try {
-        const res = await authApi.register({
-          phone: formData.phone,
-          name: formData.fullName,
-          email: formData.email,
-          password: formData.password
-        })
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error("Authentication session lost. Please go back to step 1.");
+
+        // Link Email/Password to the Phone-authenticated user
+        const credential = EmailAuthProvider.credential(formData.email, formData.password);
+        try {
+            await linkWithCredential(currentUser, credential);
+        } catch (linkError: any) {
+            // If already linked, we can safely ignore and proceed
+            if (linkError.code !== 'auth/provider-already-linked') {
+                throw linkError;
+            }
+        }
+        
+        try {
+            // Only attempt if we haven't been rate limited
+            await sendEmailVerification(currentUser);
+        } catch(e: any) {
+            console.log("Email verification skipped or rate-limited:", e.message);
+            // We don't throw here, so the user can still finish registration
+        }
+
+        const idToken = await currentUser.getIdToken();
+        // Forward the chosen password so the backend can store a bcrypt hash —
+        // this enables future logins via phone-or-email + password.
+        const res = await authApi.verifyFirebase(idToken, formData.fullName, formData.groupCode, formData.password);
         const { accessToken, refreshToken, user } = res.data.data
         setAuth(accessToken, refreshToken, user)
         router.replace('/kyc')
       } catch (err: any) {
-        setError(err.response?.data?.error?.message || 'Registration failed')
+        setError(err.message || 'Registration failed')
       } finally {
         setLoading(false)
       }
@@ -104,6 +222,11 @@ export default function SignupScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <FirebaseRecaptchaVerifierModal
+        ref={recaptchaVerifier}
+        firebaseConfig={auth.app.options as any}
+        firebaseVersion="9.23.0"
+      />
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => {
@@ -164,8 +287,8 @@ export default function SignupScreen() {
                     </View>
 
                     <Button
-                        label="Sign in with Google"
-                        onPress={() => {}}
+                        label="Sign up with Google"
+                        onPress={() => promptAsync()}
                         variant="outline"
                         style={styles.googleBtn}
                         icon={<Ionicons name="logo-google" size={20} color={colors.primary[600]} />}
@@ -190,7 +313,23 @@ export default function SignupScreen() {
                         style={styles.otpInput}
                     />
 
-                    <TouchableOpacity style={styles.resendBtn}>
+                    <TouchableOpacity
+                        style={styles.resendBtn}
+                        onPress={async () => {
+                            setError('')
+                            try {
+                                const phoneProvider = new PhoneAuthProvider(auth)
+                                const vId = await phoneProvider.verifyPhoneNumber(
+                                    `+91${formData.phone}`,
+                                    recaptchaVerifier.current!
+                                )
+                                setVerificationId(vId)
+                                setOtp('')
+                            } catch (err: any) {
+                                setError(err.message || 'Failed to resend OTP')
+                            }
+                        }}
+                    >
                         <Text style={styles.resendText}>Didn't receive code? Resend</Text>
                     </TouchableOpacity>
                 </View>
@@ -216,14 +355,14 @@ export default function SignupScreen() {
                             autoCapitalize="none"
                             icon={<Ionicons name="mail-outline" size={20} color={colors.gray[400]} />}
                         />
-                        {/^[^\s@]+@gmail\.com$/i.test(formData.email) && (
+                        {/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(formData.email) && (
                             <View style={{ position: 'absolute', right: 15, top: 38 }}>
                                 <Ionicons name="checkmark-circle" size={20} color={'#10b981'} />
                             </View>
                         )}
-                        {formData.email.length > 5 && !/^[^\s@]+@gmail\.com$/i.test(formData.email) && (
+                        {formData.email.length > 5 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(formData.email) && (
                             <Text style={{ color: '#ef4444', fontSize: 12, marginTop: 4, marginLeft: 4 }}>
-                                Gmail not applicable. Try @gmail.com
+                                Please use a valid email address.
                             </Text>
                         )}
                     </View>

@@ -92,14 +92,23 @@ Onboarding
   ├── Phone OTP Verification
   ├── Google Sign-In
   ├── KYC (PAN & Aadhaar Sandbox)
-  └── SHG Registration / Join
+  ├── SHG Registration / Join
+  ├── Role Select (Borrower / Lender)
+  ├── Lender Login
+  └── Lender Signup
 
-Home (Tab Bar)
+Borrower Home (Tab Bar)
   ├── Dashboard (balance, active loans, repayment calendar)
   ├── Borrow (apply → ML score → smart contract)
   ├── Group (SHG members, savings, meetings)
   ├── Profile (settings, transaction history, documents)
   └── Govt Schemes (eligibility, benefits, links)
+
+Lender Home (Tab Bar)
+  ├── Portfolio (investments, returns, GramUnit holding)
+  ├── Invest (pool liquidity, USDC deposit)
+  ├── Impact (ESG metrics, borrower stories)
+  └── Profile (settings, preferences)
 ```
 
 ---

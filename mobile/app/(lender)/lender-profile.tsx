@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth.store'
+import { authApi } from '@/services/api'
 import { colors } from '@/constants/colors'
 import { radius, shadows } from '@/constants/design'
 
@@ -24,7 +25,10 @@ export default function LenderProfileScreen() {
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // N1: Server-side logout (FCM + refresh-token invalidation)
+            // before wiping local state. Network failure is non-fatal.
+            try { await authApi.logout() } catch { /* proceed with local logout */ }
             logout()
             router.replace('/role-select' as any)
           },

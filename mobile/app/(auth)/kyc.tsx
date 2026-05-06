@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { TrustBadge } from '@/components/ui/SharedComponents'
 import { useAuthStore } from '@/store/auth.store'
-import { createWallet } from '@/services/wallet'
 import { kycApi } from '@/services/api'
 import { router } from 'expo-router'
 import { colors } from '@/constants/colors'
@@ -60,7 +59,7 @@ export default function KycScreen() {
     setLoading(true)
     
     try {
-      const res = await kycApi.verifyPan(pan)
+      const res = await kycApi.verifyPan(pan, profile.dob)
       // PAN is verified, move to profile completion
       setStep('PROFILE')
     } catch (e: any) {
@@ -80,10 +79,17 @@ export default function KycScreen() {
     
     try {
       const res = await kycApi.sendAadhaarOtp(aadhaar)
-      setReferenceId(res.data.data.referenceId)
+      const refId = res.data.data.referenceId || res.data.data.reference_id;
+      
+      if (!refId) {
+        throw new Error('Aadhaar service did not return a Reference ID. Please try again.');
+      }
+
+      setReferenceId(refId)
       setStep('OTP')
     } catch (e: any) {
-      setError(e.response?.data?.error?.message || 'Failed to request Aadhaar OTP.')
+      console.error('Aadhaar OTP Error:', e);
+      setError(e.response?.data?.error?.message || e.message || 'Failed to request Aadhaar OTP.');
     } finally {
       setLoading(false)
     }
@@ -125,15 +131,30 @@ export default function KycScreen() {
     setLoading(true)
 
     try {
-      await createWallet()
-      completeKyc()
+      // Call backend to complete KYC and create wallet
+      const res = await kycApi.completeKyc({
+        aadhaar,
+        pan,
+        name: profile.name,
+        dob: profile.dob,
+        gender: profile.gender,
+        address: profile.address
+      })
+      
+      // Update auth store with wallet address from backend
+      completeKyc(res.data.data.walletAddress)
       router.replace('/')
     } catch (e: any) {
-      console.error('Wallet creation failed during KYC', e)
-      setError('Failed to complete profile. Try again.')
+      console.error('KYC completion failed', e)
+      setError(e.response?.data?.error?.message || 'Failed to complete KYC. Try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSkipKyc = async () => {
+    // Navigate to main app with KYC pending status
+    router.replace('/')
   }
 
   return (
@@ -211,6 +232,19 @@ export default function KycScreen() {
                 size="xl"
                 style={{ marginTop: 16 }}
               />
+
+              <View style={{ height: 20 }} />
+              
+              <Button
+                label="Skip KYC for Now"
+                onPress={handleSkipKyc}
+                variant="ghost"
+                size="md"
+              />
+              
+              <Text style={styles.skipHint}>
+                You can complete KYC later. We'll remind you every 6 hours.
+              </Text>
             </View>
           </>
         )}
@@ -283,10 +317,14 @@ export default function KycScreen() {
               </View>
 
               <Input
-                label="Address (Fetched)"
+                label="Address (Fetched from Aadhaar)"
+                placeholder="Address will auto-fill after Aadhaar verification"
                 value={profile.address}
                 onChangeText={(val) => setProfile({ ...profile, address: val })}
-                containerStyle={{ minHeight: 60 }}
+                multiline
+                numberOfLines={4}
+                style={{ minHeight: 80, textAlignVertical: 'top', paddingTop: 12 }}
+                containerStyle={{ minHeight: 90 }}
               />
 
               <Input
@@ -389,5 +427,12 @@ const styles = StyleSheet.create({
   trustWrapper: {
     marginTop: 40,
     alignItems: 'center',
+  },
+  skipHint: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 })

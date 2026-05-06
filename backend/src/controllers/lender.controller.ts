@@ -39,20 +39,31 @@ export const getAvailablePools = async (req: AuthenticatedRequest, res: Response
 export const fundPool = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { poolId } = req.params
-    const { amount } = req.body
+    const { amount } = req.body // amount in INR
 
     if (!poolId || !amount || amount <= 0) {
       sendError(res, 'INVALID_INPUT', 'Valid poolId and positive amount are required')
       return
     }
 
-    // Phase 2: Integrate with LenderPool.sol smart contract
-    // For now, return a success acknowledgment
+    const { prisma } = require('@/lib/prisma')
+    
+    // Add LedgerEntry
+    await prisma.ledgerEntry.create({
+      data: {
+        entityType: 'lender',
+        entityId: req.userId!,
+        type: 'LENDER_DEPOSIT',
+        amountPaise: amount * 100, // convert INR to paise
+        balancePaise: 0, // Mock balance update for now
+        ref: poolId
+      }
+    })
+
     sendSuccess(res, {
-      message: 'Fund request received. Transak payment flow will be initiated.',
+      message: 'Investment commitment recorded successfully.',
       poolId,
-      amount,
-      status: 'PENDING_PAYMENT',
+      amount
     })
   } catch (error) {
     next(error)

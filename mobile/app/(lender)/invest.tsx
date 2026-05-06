@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Animated,
-  RefreshControl, Alert
+  RefreshControl, Alert, TextInput, Modal
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -9,9 +9,6 @@ import { lenderApi } from '@/services/api'
 import { Skeleton } from '@/components/ui/SharedComponents'
 import { colors } from '@/constants/colors'
 import { radius, shadows } from '@/constants/design'
-import { PaymentService } from '@/services/payment'
-import { getAddress } from '@/services/wallet'
-import * as SecureStore from 'expo-secure-store'
 
 
 
@@ -27,6 +24,10 @@ export default function InvestScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [pools, setPools] = useState<any[]>([])
   const [fundingPool, setFundingPool] = useState<string | null>(null)
+  const [investAmount, setInvestAmount] = useState('5000')
+  const [showInvestModal, setShowInvestModal] = useState(false)
+  const [activePool, setActivePool] = useState<any>(null)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   useEffect(() => {
@@ -73,45 +74,36 @@ export default function InvestScreen() {
     setRefreshing(false)
   }
 
-  const handleFundPool = async (poolId: string, poolName: string) => {
-    Alert.alert(
-      'Fund Pool',
-      `Invest in ${poolName}?\n\nThis will initiate a payment via Transak (UPI → USDC → Pool).`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Invest ₹5,000',
-          onPress: async () => {
-            setFundingPool(poolId)
-            try {
-              const walletAddress = await getAddress()
-              
-              if (!walletAddress) {
-                Alert.alert('Wallet Error', 'Please initialize your wallet first.')
-                return
-              }
+  const handleFundPool = (pool: any) => {
+    setActivePool(pool)
+    setShowInvestModal(true)
+  }
 
-              const url = PaymentService.getOnMetaUrl({
-                walletAddress,
-                fiatAmount: 5000,
-                fiatCurrency: 'INR',
-                cryptoCurrency: 'USDC',
-                chainId: 80002 // Polygon Amoy Testnet
-              })
+  const confirmInvestment = async () => {
+    if (!acceptedTerms) {
+      Alert.alert('Terms Required', 'Please accept the Terms & Conditions to proceed.')
+      return
+    }
 
-              await PaymentService.launchGateway(url)
-              
-              // Phase 2: Start polling for balance change
-              Alert.alert('Processing', 'Your payment window has opened. Once payment is complete, tokens will arrive in your wallet.')
-            } catch (err: any) {
-              Alert.alert('Error', 'Failed to launch payment gateway.')
-            } finally {
-              setFundingPool(null)
-            }
-          }
-        }
-      ]
-    )
+    const amount = parseInt(investAmount)
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid investment amount.')
+      return
+    }
+
+    setFundingPool(activePool.id)
+    setShowInvestModal(false)
+
+    try {
+      await lenderApi.fundPool(activePool.id, amount)
+      Alert.alert('Success', `Your investment commitment of ₹${amount.toLocaleString('en-IN')} has been recorded.`)
+      fetchPools()
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to register investment.')
+    } finally {
+      setFundingPool(null)
+      setActivePool(null)
+    }
   }
 
   const filteredPools = pools
@@ -277,7 +269,7 @@ export default function InvestScreen() {
                       {remaining > 0 && (
                         <TouchableOpacity
                           style={[styles.fundBtn, fundingPool === pool.id && { opacity: 0.6 }]}
-                          onPress={() => handleFundPool(pool.id, poolName)}
+                          onPress={() => handleFundPool(pool)}
                           disabled={fundingPool === pool.id}
                         >
                           <Text style={styles.fundBtnText}>
@@ -306,6 +298,65 @@ export default function InvestScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Investment Modal */}
+      <Modal
+        visible={showInvestModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowInvestModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Confirm Investment</Text>
+              <TouchableOpacity onPress={() => setShowInvestModal(false)}>
+                <Ionicons name="close" size={24} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.modalShgName}>{activePool?.shgName || 'SHG Pool'}</Text>
+              <Text style={styles.modalSubtitle}>Enter amount to commit for this group</Text>
+
+              <View style={styles.amountInputContainer}>
+                <Text style={styles.currencySymbol}>₹</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  value={investAmount}
+                  onChangeText={setInvestAmount}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#475569"
+                />
+              </View>
+
+              <View style={styles.termsBox}>
+                <TouchableOpacity 
+                  style={styles.checkbox} 
+                  onPress={() => setAcceptedTerms(!acceptedTerms)}
+                >
+                  <Ionicons 
+                    name={acceptedTerms ? "checkbox" : "square-outline"} 
+                    size={24} 
+                    color={acceptedTerms ? "#3b82f6" : "#475569"} 
+                  />
+                </TouchableOpacity>
+                <Text style={styles.termsText}>
+                  I agree to the <Text style={styles.termsLink}>Terms & Conditions</Text> for DeFi social lending on GramChain.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.confirmBtn, !acceptedTerms && styles.confirmBtnDisabled]} 
+              onPress={confirmInvestment}
+            >
+              <Text style={styles.confirmBtnText}>Confirm Commitment</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -399,4 +450,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b', borderRadius: 20, padding: 18, marginBottom: 14,
     borderWidth: 1, borderColor: '#334155',
   },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1e293b', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#f1f5f9' },
+  modalBody: { marginBottom: 24 },
+  modalShgName: { fontSize: 18, fontWeight: '700', color: '#3b82f6', marginBottom: 4 },
+  modalSubtitle: { fontSize: 14, color: '#94a3b8', marginBottom: 20 },
+  
+  amountInputContainer: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a',
+    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24,
+    borderWidth: 1, borderColor: '#334155',
+  },
+  currencySymbol: { fontSize: 24, fontWeight: '700', color: '#f1f5f9', marginRight: 8 },
+  amountInput: { flex: 1, fontSize: 24, fontWeight: '700', color: '#f1f5f9' },
+
+  termsBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  checkbox: { marginTop: 2 },
+  termsText: { flex: 1, fontSize: 13, color: '#94a3b8', lineHeight: 20 },
+  termsLink: { color: '#3b82f6', fontWeight: '600' },
+
+  confirmBtn: {
+    backgroundColor: '#3b82f6', borderRadius: 16, paddingVertical: 16, alignItems: 'center',
+  },
+  confirmBtnDisabled: { backgroundColor: '#334155', opacity: 0.5 },
+  confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 })

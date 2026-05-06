@@ -1,0 +1,53 @@
+{
+  "project_info": {
+    "project_number": "51986108180",
+    "project_id": "gramchainn",
+    "storage_bucket": "gramchainn.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:51986108180:android:558278ad6455712bb9fc01",
+        "android_client_info": {
+          "package_name": "com.gramchain.gramchain"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "51986108180-uncj5n0cqho9g4henb4an840gdro302o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gramchain.gramchain"
+          }
+        },
+        {
+          "client_id": "51986108180-t83208fe8ia5ebr40i49u8jr472lsb9r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2dDFEBJcj5gJuVB9rYO2s8yIY68XIVCo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "51986108180-t83208fe8ia5ebr40i49u8jr472lsb9r.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "51986108180-0rderk57ou6h3k2hf9k2g64bq5f4kp5h.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.gramchain.gramchain"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
