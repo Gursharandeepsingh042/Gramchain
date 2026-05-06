@@ -74,6 +74,9 @@ import { warmSecrets } from '@/lib/secrets'
 const app = express()
 const PORT = process.env.PORT ?? 3000
 
+// Trust Railway/proxy X-Forwarded-For headers (required for express-rate-limit behind a proxy)
+app.set('trust proxy', 1)
+
 // ─── Allowed Origins ─────────────────────────────────────────
 // In production, set ALLOWED_ORIGINS=https://yourdomain.com,gramchain://
 const allowedOrigins = process.env.ALLOWED_ORIGINS
