@@ -12,7 +12,7 @@ from api.schemas import ScoreRequest, ScoreResponse
 router = APIRouter()
 
 # Load model if available, else use rule-based fallback
-MODEL_PATH = Path(__file__).parent.parent / "model" / "credit_model.joblib"
+MODEL_PATH = Path(__file__).parent.parent.parent / "model" / "credit_model.joblib"
 
 _model = None
 
