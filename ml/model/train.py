@@ -54,7 +54,7 @@ def train_model(data_path: str = None):
         )),
     ])
     
-    model.fit(X_train, y_train, xgb__eval_set=[(X_test, y_test)], xgb__verbose=False)
+    model.fit(X_train, y_train, xgb__verbose=False)
     
     # Evaluate
     y_pred = model.predict(X_test)
