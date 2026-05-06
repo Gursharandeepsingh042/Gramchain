@@ -1,6 +1,9 @@
 # ── Stage 1: Build ────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+# Prisma needs OpenSSL to detect libssl version and pick the correct query engine
+RUN apk add --no-cache openssl libc6-compat
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -13,6 +16,9 @@ RUN npm run build
 
 # ── Stage 2: Production ────────────────────────────────────────
 FROM node:20-alpine
+
+# Prisma runtime needs OpenSSL 3 + glibc shim on Alpine
+RUN apk add --no-cache openssl libc6-compat
 
 # SEC: run as non-root user
 RUN addgroup -S gramchain && adduser -S gramchain -G gramchain
