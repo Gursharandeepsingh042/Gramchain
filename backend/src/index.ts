@@ -66,7 +66,9 @@ import { warmSecrets } from '@/lib/secrets'
   }
 
   if (missing.length > 0) {
-    logger.fatal({ missing }, `Missing or invalid environment variables (${missing.length})`)
+    const msg = `FATAL: Missing or invalid environment variables: ${missing.join(', ')}`
+    console.error(msg)
+    logger.fatal({ missing }, msg)
     process.exit(1)
   }
 }
