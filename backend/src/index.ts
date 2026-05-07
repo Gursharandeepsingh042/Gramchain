@@ -183,17 +183,7 @@ async function bootstrap() {
     await prisma.$connect()
     logger.info('Supabase PostgreSQL connected')
 
-    // Start background jobs & workers
-    const workers: any[] = []
-    workers.push(startBlockchainWriterWorker())
-    await startEventListener()
-    await startRepaymentReminderJob()
-    await startDefaultCheckerJob()
-    startCleanupJob()
-    startKycReminderJob()
-    startReconcileJob()
-
-    // FIX: Start outbox sweep — runs every 10s, recovers any crash-survivor jobs
+    // Start server first so health checks pass, then kick off background jobs
     const outboxTimer = startOutboxSweep()
 
     server = app.listen(Number(PORT), '0.0.0.0', () => {
@@ -207,6 +197,16 @@ async function bootstrap() {
 
     // SEC7: Removed dangerous taskkill logic — use a process manager (PM2) in prod.
     // In development, just exit cleanly so the dev can fix the port conflict.
+    // Start background jobs & workers after server is listening (non-blocking)
+    const workers: any[] = []
+    workers.push(startBlockchainWriterWorker())
+    startEventListener().catch(err => logger.warn({ err }, 'Event listener failed to start — will retry'))
+    startRepaymentReminderJob().catch(err => logger.warn({ err }, 'Repayment reminder job failed to start'))
+    startDefaultCheckerJob().catch(err => logger.warn({ err }, 'Default checker job failed to start'))
+    startCleanupJob()
+    startKycReminderJob()
+    startReconcileJob()
+
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
         logger.fatal({ port: PORT }, `Port ${PORT} is already in use. Stop the other process or use a different PORT.`)
