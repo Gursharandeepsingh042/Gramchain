@@ -169,17 +169,6 @@ let server: ReturnType<typeof app.listen>
 
 async function bootstrap() {
   try {
-    // Warm-load secrets first so every subsequent call hits cache, not KMS.
-    await warmSecrets([
-      'BACKEND_PRIVATE_KEY',
-      'ENCRYPTION_KEY',
-      'JWT_SECRET',
-      'JWT_REFRESH_SECRET',
-      'RAZORPAY_KEY_ID',
-      'RAZORPAY_KEY_SECRET',
-      'RAZORPAY_WEBHOOK_SECRET',
-    ])
-
     await prisma.$connect()
     logger.info('Supabase PostgreSQL connected')
 
@@ -197,6 +186,17 @@ async function bootstrap() {
 
     // SEC7: Removed dangerous taskkill logic — use a process manager (PM2) in prod.
     // In development, just exit cleanly so the dev can fix the port conflict.
+    // Warm secrets after server is listening — missing optional secrets won't crash startup
+    warmSecrets([
+      'BACKEND_PRIVATE_KEY',
+      'ENCRYPTION_KEY',
+      'JWT_SECRET',
+      'JWT_REFRESH_SECRET',
+      'RAZORPAY_KEY_ID',
+      'RAZORPAY_KEY_SECRET',
+      'RAZORPAY_WEBHOOK_SECRET',
+    ]).catch(err => logger.warn({ err }, 'Secret warm-load failed — some secrets may be missing'))
+
     // Start background jobs & workers after server is listening (non-blocking)
     const workers: any[] = []
     workers.push(startBlockchainWriterWorker())
