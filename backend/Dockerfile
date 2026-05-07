@@ -38,4 +38,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- http://localhost:3000/health | grep -q '"status":"ok"' || exit 1
 
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy && node dist/index.js"]
