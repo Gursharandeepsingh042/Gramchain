@@ -9,6 +9,21 @@ import { AuthenticatedRequest } from '@/middleware/auth.middleware'
  */
 export const sendOtp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    // DEPRECATED: real OTP delivery is handled by Firebase Phone Auth on the mobile client.
+    // This endpoint remains ONLY for demo mode (automated tests, offline dev). In production,
+    // clients must call POST /auth/firebase with a Firebase ID token instead.
+    if (process.env.DEMO_MODE !== 'true') {
+      res.status(410).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'ENDPOINT_DEPRECATED',
+          message: 'Use POST /auth/firebase with a Firebase ID token. Real OTP delivery is handled client-side by Firebase Phone Auth.',
+        },
+        timestamp: new Date().toISOString(),
+      })
+      return
+    }
     const { phone } = req.body
     if (!phone || !/^\d{10}$/.test(phone)) {
       sendError(res, 'INVALID_PHONE', 'Phone must be a 10-digit Indian mobile number')
@@ -31,6 +46,19 @@ export const sendOtp = async (req: Request, res: Response, next: NextFunction): 
  */
 export const verifyOtp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    // DEPRECATED: see sendOtp comment. Only usable in demo mode.
+    if (process.env.DEMO_MODE !== 'true') {
+      res.status(410).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'ENDPOINT_DEPRECATED',
+          message: 'Use POST /auth/firebase with a Firebase ID token.',
+        },
+        timestamp: new Date().toISOString(),
+      })
+      return
+    }
     const { phone, otp } = req.body
     if (!phone || !otp) {
       sendError(res, 'MISSING_FIELDS', 'phone and otp are required')
