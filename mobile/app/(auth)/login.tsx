@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
 import { makeRedirectUri } from 'expo-auth-session'
@@ -13,9 +14,8 @@ import Constants from 'expo-constants'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
 import { Alert } from 'react-native'
-import { auth } from '@/services/firebase'
-import { PhoneAuthProvider, signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
+import { auth, rnAuth } from '@/services/firebase'
+import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
@@ -34,7 +34,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const recaptchaVerifier = React.useRef(null)
 
   // Google Auth
   const redirectUri = makeRedirectUri()
@@ -99,16 +98,13 @@ export default function LoginScreen() {
         }
         
         try {
-          const phoneProvider = new PhoneAuthProvider(auth);
-          const verificationIdPromise = phoneProvider.verifyPhoneNumber(
-            `+91${phone}`,
-            recaptchaVerifier.current!
-          );
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
-          );
-          const verificationId = await Promise.race([verificationIdPromise, timeoutPromise]);
-          router.push({ pathname: '/(auth)/verify-otp', params: { phone, verificationId, mode: 'login' } })
+          // React Native Firebase Phone Auth — no reCAPTCHA needed (uses Play Integrity / APNs)
+          const confirmation = await rnAuth().signInWithPhoneNumber(`+91${phone}`)
+          // Store verificationId in AsyncStorage for verify-otp screen
+          if (confirmation.verificationId) {
+            await AsyncStorage.setItem('@auth_verificationId', confirmation.verificationId)
+          }
+          router.push({ pathname: '/(auth)/verify-otp', params: { phone, mode: 'login' } })
         } catch (err: any) {
           setError(err.message || 'Failed to send OTP')
         }
@@ -197,11 +193,6 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.app.options as any}
-        firebaseVersion="9.23.0"
-      />
       {/* Back button */}
       <TouchableOpacity
         style={styles.backBtn}

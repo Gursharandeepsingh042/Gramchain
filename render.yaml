@@ -14,19 +14,12 @@
 #     Free Render tier does NOT support IPv6, so the direct db.<ref>.supabase.co
 #     host will fail. Get the pooler URI from:
 #       Supabase → Project Settings → Database → Connection string → Session pooler
-#   - To use Upstash Redis instead of Render Key Value, delete the `gramchain-redis`
-#     service block and set REDIS_URL manually as a secret.
+#   - Redis is provided externally by Upstash. REDIS_URL is set as a secret env var
+#     (sync: false) and pasted in the Render dashboard.
 
 databases: []
 
 services:
-  # ── Redis (BullMQ queue + caching) ─────────────────────────────
-  - type: keyvalue
-    name: gramchain-redis
-    plan: free            # 25 MB. Upgrade to "starter" ($10/mo, 256 MB) for production.
-    region: singapore     # Closest to India. Options: oregon, frankfurt, ohio, singapore.
-    ipAllowList: []       # empty = only reachable from Render private network
-
   # ── Backend API (Express + Prisma + BullMQ worker in-process) ──
   - type: web
     name: gramchain-backend
@@ -49,12 +42,9 @@ services:
       - key: DEMO_MODE
         value: "false"
 
-      # ── Redis (auto-wired from the keyvalue service above) ──
+      # ── Redis (Upstash — paste rediss:// connection URL when prompted) ──
       - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: gramchain-redis
-          property: connectionString
+        sync: false
 
       # ── Supabase Postgres (paste Session Pooler URI when prompted) ──
       - key: DATABASE_URL

@@ -1,0 +1,147 @@
+name: Mobile CI/CD
+
+# Trigger:
+#   - push to `dev`  → OTA update on `preview` channel (instant, no rebuild)
+#   - push to `main` → full EAS build (AAB) + optionally submit to Play Store
+#   - manual dispatch with profile selection
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS profile (preview | production)'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+      action:
+        description: 'update (OTA) or build (binary)'
+        required: true
+        default: 'update'
+        type: choice
+        options:
+          - update
+          - build
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  # ───────────────────────────────────────────────────
+  # Job 1: Lint + Type Check (always runs)
+  # ───────────────────────────────────────────────────
+  verify:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+  # ───────────────────────────────────────────────────
+  # Job 2: OTA Update on `dev` push (preview channel)
+  # No native rebuild — JS/TS bundle pushed to existing APKs.
+  # ───────────────────────────────────────────────────
+  ota-preview:
+    name: OTA Update — Preview
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: Publish OTA update
+        run: eas update --channel preview --message "${{ github.event.head_commit.message }}" --non-interactive
+
+  # ───────────────────────────────────────────────────
+  # Job 3: Production AAB Build on `main` push
+  # ───────────────────────────────────────────────────
+  build-production:
+    name: Production Build — AAB
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: Build Android (AAB) — production
+        run: eas build --platform android --profile production --non-interactive --no-wait
+
+      # Uncomment once Play Console service account is configured:
+      # - name: Submit to Play Store (internal track)
+      #   run: eas submit --platform android --profile production --latest --non-interactive
+
+  # ───────────────────────────────────────────────────
+  # Job 4: Manual dispatch (build or update any profile)
+  # ───────────────────────────────────────────────────
+  manual:
+    name: Manual ${{ inputs.action }} — ${{ inputs.profile }}
+    needs: verify
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: OTA update
+        if: inputs.action == 'update'
+        run: 'eas update --channel ${{ inputs.profile }} --message "Manual ${{ github.sha }}" --non-interactive'
+
+      - name: Binary build
+        if: inputs.action == 'build'
+        run: 'eas build --platform android --profile ${{ inputs.profile }} --non-interactive --no-wait'

@@ -15,7 +15,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://gramchain-staging.up.railway.app/api/v1",
+        "EXPO_PUBLIC_API_URL": "https://gramchain.onrender.com/api/v1",
         "EXPO_PUBLIC_ENV": "staging"
       }
     },

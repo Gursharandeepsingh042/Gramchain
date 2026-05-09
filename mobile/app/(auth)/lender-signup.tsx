@@ -5,15 +5,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
-import { auth } from '@/services/firebase'
+import { auth, rnAuth } from '@/services/firebase'
 import { PhoneAuthProvider, signInWithCredential, EmailAuthProvider, linkWithCredential } from 'firebase/auth'
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
 
 type SignupStep = 1 | 2 | 3
 
@@ -41,19 +41,18 @@ export default function LenderSignupScreen() {
   const [otp, setOtp] = useState('')
   const [verificationId, setVerificationId] = useState('')
   const [resending, setResending] = useState(false)
-  const recaptchaVerifier = React.useRef(null)
 
   const handleResendOtp = async () => {
     if (resending) return
     setResending(true)
     setError('')
     try {
-      const phoneProvider = new PhoneAuthProvider(auth)
-      const vId = await phoneProvider.verifyPhoneNumber(
-        `+91${formData.phone}`,
-        recaptchaVerifier.current!
-      )
-      setVerificationId(vId)
+      // React Native Firebase: resend OTP
+      const newConfirmation = await rnAuth().signInWithPhoneNumber(`+91${formData.phone}`)
+      if (newConfirmation.verificationId) {
+        await AsyncStorage.setItem('@auth_verificationId', newConfirmation.verificationId)
+        setVerificationId(newConfirmation.verificationId)
+      }
       setOtp('')
     } catch (err: any) {
       setError(err.message || 'Failed to resend OTP')
@@ -88,17 +87,12 @@ export default function LenderSignupScreen() {
           return
         }
 
-        // Send real OTP via Firebase Phone Auth
-        const phoneProvider = new PhoneAuthProvider(auth)
-        const otpPromise = phoneProvider.verifyPhoneNumber(
-          `+91${formData.phone}`,
-          recaptchaVerifier.current!
-        )
-        const otpTimeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
-        )
-        const vId = await Promise.race([otpPromise, otpTimeout])
-        setVerificationId(vId)
+        // React Native Firebase Phone Auth — no reCAPTCHA needed
+        const confirmation = await rnAuth().signInWithPhoneNumber(`+91${formData.phone}`)
+        if (confirmation.verificationId) {
+          await AsyncStorage.setItem('@auth_verificationId', confirmation.verificationId)
+          setVerificationId(confirmation.verificationId)
+        }
         setStep(2)
       } catch (err: any) {
         setError(err.message || 'Failed to send OTP')
@@ -171,11 +165,6 @@ export default function LenderSignupScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.app.options as any}
-        firebaseVersion="9.23.0"
-      />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

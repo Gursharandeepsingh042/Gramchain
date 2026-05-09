@@ -3,6 +3,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 // @ts-ignore
 import { initializeAuth, getAuth, getReactNativePersistence, type Auth } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// React Native Firebase — used for Phone Auth (works without reCAPTCHA via Play Integrity)
+import rnAuth from '@react-native-firebase/auth';
 
 // Configuration derived from google-services.json
 const firebaseConfig = {
@@ -37,3 +39,8 @@ try {
 }
 
 export const auth = _auth as Auth;
+
+// Native Firebase auth (used for Phone Auth — no reCAPTCHA, uses Play Integrity / APNs)
+// Use this for: signInWithPhoneNumber(), confirmation.confirm(otp)
+// Keep `auth` (JS SDK) for: Google sign-in credential creation
+export { rnAuth };

@@ -6,26 +6,30 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
-import { auth } from '@/services/firebase'
-import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth'
+import { auth, rnAuth } from '@/services/firebase'
+import { signInWithCredential, PhoneAuthProvider } from 'firebase/auth'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
 
 export default function VerifyOtpScreen() {
-  const { phone, mode, verificationId: initialVerificationId } = useLocalSearchParams<{ phone: string, mode: string, verificationId: string }>()
+  const { phone, mode } = useLocalSearchParams<{ phone: string, mode: string }>()
   const { setAuth } = useAuthStore()
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(60)
-  const [currentVerificationId, setCurrentVerificationId] = useState(initialVerificationId)
-  const recaptchaVerifier = useRef<any>(null)
+  const [verificationId, setVerificationId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Load verificationId from AsyncStorage (stored by login/signup screens)
+    AsyncStorage.getItem('@auth_verificationId').then(setVerificationId)
+  }, [])
 
   useEffect(() => {
     if (countdown > 0) {
@@ -39,10 +43,15 @@ export default function VerifyOtpScreen() {
       setError('Please enter the 6-digit OTP')
       return
     }
+    if (!verificationId) {
+      setError('Verification session expired. Please request a new OTP.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
-      const credential = PhoneAuthProvider.credential(currentVerificationId, otp)
+      // Use JS SDK PhoneAuthProvider with verificationId from AsyncStorage
+      const credential = PhoneAuthProvider.credential(verificationId, otp)
       const userCredential = await signInWithCredential(auth, credential)
       const idToken = await userCredential.user.getIdToken()
 
@@ -67,16 +76,12 @@ export default function VerifyOtpScreen() {
     setResending(true)
     setError('')
     try {
-      const phoneProvider = new PhoneAuthProvider(auth)
-      const resendPromise = phoneProvider.verifyPhoneNumber(
-        `+91${phone}`,
-        recaptchaVerifier.current!
-      )
-      const resendTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('OTP request timed out. Check your internet or try again.')), 30000)
-      )
-      const newVerificationId = await Promise.race([resendPromise, resendTimeout])
-      setCurrentVerificationId(newVerificationId)
+      // React Native Firebase: resend OTP
+      const newConfirmation = await rnAuth().signInWithPhoneNumber(`+91${phone}`)
+      if (newConfirmation.verificationId) {
+        await AsyncStorage.setItem('@auth_verificationId', newConfirmation.verificationId)
+        setVerificationId(newConfirmation.verificationId)
+      }
       setCountdown(60)
       setOtp('')
     } catch (err: any) {
@@ -88,11 +93,6 @@ export default function VerifyOtpScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.app.options as any}
-        firebaseVersion="9.23.0"
-      />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.surface} />
