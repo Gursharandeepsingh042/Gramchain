@@ -1,0 +1,103 @@
+# Render Blueprint for GramChain
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Usage:
+#   1. Push this file to the repo root.
+#   2. Render Dashboard → New → Blueprint → pick this repo.
+#   3. Fill in the env vars marked `sync: false` (secrets) when prompted.
+#   4. Click Apply. Render will create the web service + Redis.
+#
+# Notes:
+#   - Web service uses backend/Dockerfile (multi-stage). Dockerfile already runs
+#     `prisma migrate deploy` before starting the server.
+#   - DATABASE_URL must be the Supabase **Session Pooler** URI (IPv4, port 5432).
+#     Free Render tier does NOT support IPv6, so the direct db.<ref>.supabase.co
+#     host will fail. Get the pooler URI from:
+#       Supabase → Project Settings → Database → Connection string → Session pooler
+#   - To use Upstash Redis instead of Render Key Value, delete the `gramchain-redis`
+#     service block and set REDIS_URL manually as a secret.
+
+databases: []
+
+services:
+  # ── Redis (BullMQ queue + caching) ─────────────────────────────
+  - type: keyvalue
+    name: gramchain-redis
+    plan: free            # 25 MB. Upgrade to "starter" ($10/mo, 256 MB) for production.
+    region: singapore     # Closest to India. Options: oregon, frankfurt, ohio, singapore.
+    ipAllowList: []       # empty = only reachable from Render private network
+
+  # ── Backend API (Express + Prisma + BullMQ worker in-process) ──
+  - type: web
+    name: gramchain-backend
+    runtime: docker
+    plan: starter         # $7/mo. Use "free" for testing (cold starts after 15 min idle).
+    region: singapore
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    branch: main          # Change if your default branch differs.
+
+    envVars:
+      # ── Runtime ──
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DEMO_MODE
+        value: "false"
+
+      # ── Redis (auto-wired from the keyvalue service above) ──
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: gramchain-redis
+          property: connectionString
+
+      # ── Supabase Postgres (paste Session Pooler URI when prompted) ──
+      - key: DATABASE_URL
+        sync: false       # secret, set in dashboard
+
+      # ── JWT secrets (generate fresh: `openssl rand -hex 64`) ──
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+
+      # ── Blockchain (Polygon Amoy) ──
+      - key: POLYGON_RPC_URL
+        value: https://rpc-amoy.polygon.technology
+      - key: BACKEND_PRIVATE_KEY
+        sync: false
+      - key: BACKEND_WALLET_ADDRESS
+        sync: false
+      - key: LOAN_MANAGER_ADDRESS
+        sync: false
+      - key: SHG_POOL_FACTORY_ADDRESS
+        sync: false
+      - key: CREDIT_SCORE_REGISTRY_ADDRESS
+        sync: false
+
+      # ── Firebase Admin (push notifications) ──
+      # Paste the full service-account JSON as a single-line string.
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+
+      # ── ML service (point at your deployed ML host or leave blank) ──
+      - key: ML_SERVICE_URL
+        sync: false
+
+      # ── KYC providers ──
+      # Sandbox.co.in — used for real Aadhaar OTP + PAN verification.
+      # Get from https://app.sandbox.co.in → API Keys.
+      # If left blank or set to placeholder, backend falls back to MOCK responses.
+      - key: SANDBOX_API_KEY
+        sync: false
+      - key: SANDBOX_API_SECRET
+        sync: false
+      - key: DIGILOCKER_CLIENT_ID
+        sync: false
+      - key: DIGILOCKER_CLIENT_SECRET
+        sync: false
