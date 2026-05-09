@@ -1,10 +1,11 @@
 {
-  "creditScoreRegistry": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  "loanManager": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-  "shgPoolFactory": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
-  "network": "localhost",
-  "chainId": 31337,
-  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "backendWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "deployedAt": "2026-04-24T14:41:19.033Z"
+  "creditScoreRegistry": "0x7C5600765F6132d1fB16E2C77C00213184e3833F",
+  "loanManager": "0x55acf61Ba8A71E3ae1C5fABD2B516eE84Eb7Ea1F",
+  "shgPoolFactory": "0x7F93E3B1F68bF0961AF136c4FB86E171EC4da916",
+  "network": "polygon",
+  "chainId": 137,
+  "deployer": "0xda96F4A5674BAB11904f8554484c74e554af4908",
+  "backendWallet": "0xda96F4A5674BAB11904f8554484c74e554af4908",
+  "approvalQuorum": 3,
+  "deployedAt": "2026-05-09T19:33:51.269Z"
 }
