@@ -79,19 +79,26 @@ export default function LoginScreen() {
     setLoading(true)
     setError('')
     try {
+      console.log('[Google Auth] Token received, isIdToken:', isIdToken)
       // Build Firebase credential — idToken preferred, accessToken as fallback
       const credential = isIdToken
         ? GoogleAuthProvider.credential(token)
         : GoogleAuthProvider.credential(null, token)
+      console.log('[Google Auth] Credential created')
       const userCredential = await signInWithCredential(auth, credential)
+      console.log('[Google Auth] Firebase sign-in successful')
       const firebaseToken = await userCredential.user.getIdToken()
+      console.log('[Google Auth] Firebase token obtained')
 
       const res = await authApi.verifyFirebase(firebaseToken)
+      console.log('[Google Auth] Backend verification successful')
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(accessToken, refreshToken, user)
       router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
     } catch (err: any) {
-      setError(err.message || 'Google login failed')
+      console.error('[Google Auth] Error:', err)
+      const errorMsg = err.response?.data?.error?.message || err.message || 'Google login failed'
+      setError(errorMsg)
     } finally {
       setLoading(false)
     }
