@@ -98,8 +98,9 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
-  sendOtp: (phone: string) => api.post('/auth/send-otp', { phone }),
-  verifyOtp: (phone: string, otp: string) => api.post('/auth/verify-otp', { phone, otp }),
+  // NOTE: /auth/send-otp and /auth/verify-otp are deprecated on the backend (returns 410
+  // unless DEMO_MODE). Real OTP delivery is handled by Firebase Phone Auth on the client;
+  // verification goes through /auth/firebase below.
   loginWithPassword: (identifier: string, password: string) => api.post('/auth/login', { identifier, password }),
   register: (data: { phone: string; name: string; email: string; password?: string }) => 
     api.post('/auth/register', data),
