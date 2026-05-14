@@ -43,21 +43,27 @@ if (!getApps().length) {
 }
 
 let _auth: any = null;
-try {
-  _auth = getAuth(app);
-} catch (e) {
-  // Only use React Native persistence on native platforms
-  if (Platform.OS !== 'web') {
+// Always use initializeAuth with AsyncStorage on native platforms for persistence
+if (Platform.OS !== 'web') {
+  try {
+    _auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch (e) {
+    console.warn("Failed to initialize auth with AsyncStorage. Fallback to getAuth", e);
     try {
-      _auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage),
-      });
+      _auth = getAuth(app);
     } catch (e2) {
       console.warn("Failed to initialize auth. Fallback to dummy to prevent crash", e2);
       _auth = { app } as any;
     }
-  } else {
-    // Web: use default auth without persistence
+  }
+} else {
+  // Web: use default auth without persistence
+  try {
+    _auth = getAuth(app);
+  } catch (e) {
+    console.warn("Failed to initialize auth. Fallback to dummy to prevent crash", e);
     _auth = { app } as any;
   }
 }
