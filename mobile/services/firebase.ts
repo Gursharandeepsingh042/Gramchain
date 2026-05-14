@@ -24,14 +24,15 @@ export const getRnAuth = () => {
 };
 
 // Configuration derived from google-services.json
+// IMPORTANT: apiKey must match the Android API key from google-services.json
+// for native Phone Auth to work. The web API key is different and won't work on Android.
 const firebaseConfig = {
-  apiKey: "AIzaSyAY9EVPePh8sMz_D-6PoECbPz4peLQPx9o",
+  apiKey: "AIzaSyC2dDFEBJcj5gJuVB9rYO2s8yIY68XIVCo",
   authDomain: "gramchainn.firebaseapp.com",
   projectId: "gramchainn",
   storageBucket: "gramchainn.firebasestorage.app",
   messagingSenderId: "51986108180",
-  appId: "1:51986108180:web:6840775c10f3bab2b9fc01",
-  measurementId: "G-64LWY3F57R"
+  appId: "1:51986108180:android:558278ad6455712bb9fc01",
 };
 
 let app;
@@ -67,3 +68,12 @@ export const auth = _auth as Auth;
 // Use this for: signInWithPhoneNumber(), confirmation.confirm(otp)
 // Keep `auth` (JS SDK) for: Google sign-in credential creation
 // Lazy-loaded via getRnAuth() to prevent native crashes
+
+// In-memory holder for the ConfirmationResult returned by
+// @react-native-firebase/auth's signInWithPhoneNumber(). The object holds
+// native handles and cannot be serialized to AsyncStorage; we keep it in
+// module memory while the user navigates from phone-entry → verify-otp.
+let pendingConfirmation: any = null;
+export const setPendingConfirmation = (c: any) => { pendingConfirmation = c; };
+export const getPendingConfirmation = () => pendingConfirmation;
+export const clearPendingConfirmation = () => { pendingConfirmation = null; };

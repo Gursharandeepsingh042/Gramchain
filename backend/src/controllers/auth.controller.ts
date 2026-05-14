@@ -224,12 +224,12 @@ export const checkPhone = async (req: Request, res: Response, next: NextFunction
  */
 export const verifyFirebase = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { idToken, name, groupCode, password } = req.body
+    const { idToken, name, groupCode, password, role } = req.body
     if (!idToken) {
       sendError(res, 'MISSING_TOKEN', 'idToken is required')
       return
     }
-    const result = await AuthService.verifyFirebaseToken(idToken, name, groupCode, password)
+    const result = await AuthService.verifyFirebaseToken(idToken, name, groupCode, password, role)
     sendSuccess(res, result, 200)
   } catch (error) {
     next(error)

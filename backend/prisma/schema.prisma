@@ -21,6 +21,11 @@ enum KycStatus {
   FAILED
 }
 
+enum UserRole {
+  BORROWER
+  LENDER
+}
+
 enum LoanStatus {
   PENDING
   APPROVED
@@ -87,6 +92,7 @@ model User {
   aadhaarHash   String?   @unique
   panHash       String?   @unique
   walletAddress String?   @unique
+  role               UserRole  @default(BORROWER)
   kycStatus         KycStatus @default(PENDING)
   kycDetails        String?   // AES-256-GCM encrypted JSON string (NOT raw Json type)
   name              String?

@@ -14,7 +14,7 @@ import Constants from 'expo-constants'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
 import { Alert } from 'react-native'
-import { auth, rnAuth } from '@/services/firebase'
+import { auth, getRnAuth, setPendingConfirmation } from '@/services/firebase'
 import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
@@ -35,8 +35,11 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Google Auth
-  const redirectUri = makeRedirectUri()
+  // Google Auth — use explicit redirect URI for Expo Go, auto-detect for standalone
+  const isExpoGo = Constants.appOwnership === 'expo'
+  const redirectUri = isExpoGo
+    ? 'https://auth.expo.io/@sharan66/gramchain'
+    : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
@@ -99,11 +102,11 @@ export default function LoginScreen() {
         
         try {
           // React Native Firebase Phone Auth — no reCAPTCHA needed (uses Play Integrity / APNs)
-          const confirmation = await rnAuth().signInWithPhoneNumber(`+91${phone}`)
-          // Store verificationId in AsyncStorage for verify-otp screen
-          if (confirmation.verificationId) {
-            await AsyncStorage.setItem('@auth_verificationId', confirmation.verificationId)
-          }
+          // Keep the whole ConfirmationResult so verify-otp can call .confirm(code).
+          const rnAuthMod = getRnAuth()
+          if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
+          const confirmation = await rnAuthMod().signInWithPhoneNumber(`+91${phone}`)
+          setPendingConfirmation(confirmation)
           router.push({ pathname: '/(auth)/verify-otp', params: { phone, mode: 'login' } })
         } catch (err: any) {
           setError(err.message || 'Failed to send OTP')

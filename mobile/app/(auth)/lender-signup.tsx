@@ -5,15 +5,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
-import { auth, rnAuth } from '@/services/firebase'
-import { PhoneAuthProvider, signInWithCredential, EmailAuthProvider, linkWithCredential } from 'firebase/auth'
+import { getRnAuth, setPendingConfirmation, getPendingConfirmation, clearPendingConfirmation } from '@/services/firebase'
 
 type SignupStep = 1 | 2 | 3
 
@@ -39,7 +37,8 @@ export default function LenderSignupScreen() {
   })
 
   const [otp, setOtp] = useState('')
-  const [verificationId, setVerificationId] = useState('')
+  // Holds the native Firebase user after OTP confirm — used by step 3.
+  const [phoneFirebaseUser, setPhoneFirebaseUser] = useState<any>(null)
   const [resending, setResending] = useState(false)
 
   const handleResendOtp = async () => {
@@ -48,11 +47,10 @@ export default function LenderSignupScreen() {
     setError('')
     try {
       // React Native Firebase: resend OTP
-      const newConfirmation = await rnAuth().signInWithPhoneNumber(`+91${formData.phone}`)
-      if (newConfirmation.verificationId) {
-        await AsyncStorage.setItem('@auth_verificationId', newConfirmation.verificationId)
-        setVerificationId(newConfirmation.verificationId)
-      }
+      const rnAuthMod = getRnAuth()
+      if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
+      const newConfirmation = await rnAuthMod().signInWithPhoneNumber(`+91${formData.phone}`)
+      setPendingConfirmation(newConfirmation)
       setOtp('')
     } catch (err: any) {
       setError(err.message || 'Failed to resend OTP')
@@ -88,11 +86,10 @@ export default function LenderSignupScreen() {
         }
 
         // React Native Firebase Phone Auth — no reCAPTCHA needed
-        const confirmation = await rnAuth().signInWithPhoneNumber(`+91${formData.phone}`)
-        if (confirmation.verificationId) {
-          await AsyncStorage.setItem('@auth_verificationId', confirmation.verificationId)
-          setVerificationId(confirmation.verificationId)
-        }
+        const rnAuthMod = getRnAuth()
+        if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
+        const confirmation = await rnAuthMod().signInWithPhoneNumber(`+91${formData.phone}`)
+        setPendingConfirmation(confirmation)
         setStep(2)
       } catch (err: any) {
         setError(err.message || 'Failed to send OTP')
@@ -106,9 +103,12 @@ export default function LenderSignupScreen() {
       }
       setLoading(true)
       try {
-        // Verify OTP via Firebase
-        const credential = PhoneAuthProvider.credential(verificationId, otp)
-        await signInWithCredential(auth, credential)
+        // Verify OTP using the native ConfirmationResult.
+        const confirmation = getPendingConfirmation()
+        if (!confirmation) throw new Error('Verification session expired. Tap back and request a new OTP.')
+        const userCredential = await confirmation.confirm(otp)
+        setPhoneFirebaseUser(userCredential.user)
+        clearPendingConfirmation()
         setStep(3)
       } catch (err: any) {
         const msg = err.code === 'auth/invalid-verification-code'
@@ -136,22 +136,14 @@ export default function LenderSignupScreen() {
 
       setLoading(true)
       try {
-        const currentUser = auth.currentUser
+        const currentUser = phoneFirebaseUser || getRnAuth()?.()?.currentUser
         if (!currentUser) throw new Error('Authentication session lost. Please go back to step 1.')
 
-        // Link Email/Password to the Phone-authenticated Firebase user
-        const emailCred = EmailAuthProvider.credential(formData.email, formData.password)
-        try {
-          await linkWithCredential(currentUser, emailCred)
-        } catch (linkError: any) {
-          if (linkError.code !== 'auth/provider-already-linked') {
-            throw linkError
-          }
-        }
-
-        // Register via Firebase token verification — creates user in backend DB
+        // Register via Firebase token verification — creates user in backend DB.
+        // Backend stores the bcrypt hash of formData.password so future logins
+        // work via phone-or-email + password. JS-SDK email linking is not needed.
         const idToken = await currentUser.getIdToken()
-        const res = await authApi.verifyFirebase(idToken, formData.fullName, undefined, formData.password)
+        const res = await authApi.verifyFirebase(idToken, formData.fullName, undefined, formData.password, 'LENDER')
         const { accessToken, refreshToken, user } = res.data.data
         setAuth(accessToken, refreshToken, { ...user, role: 'LENDER' })
         router.replace('/portfolio' as any)

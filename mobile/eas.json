@@ -16,7 +16,10 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://gramchain.onrender.com/api/v1",
-        "EXPO_PUBLIC_ENV": "staging"
+        "EXPO_PUBLIC_ENV": "staging",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "51986108180-l9livilat4623277s45tpr28ru5qmdvb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "51986108180-0rderk57ou6h3k2hf9k2g64bq5f4kp5h.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "51986108180-t83208fe8ia5ebr40i49u8jr472lsb9r.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -27,7 +30,10 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.gramchain.app/api/v1",
-        "EXPO_PUBLIC_ENV": "production"
+        "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "51986108180-l9livilat4623277s45tpr28ru5qmdvb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "51986108180-0rderk57ou6h3k2hf9k2g64bq5f4kp5h.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "51986108180-t83208fe8ia5ebr40i49u8jr472lsb9r.apps.googleusercontent.com"
       }
     }
   },

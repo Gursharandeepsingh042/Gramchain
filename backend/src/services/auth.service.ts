@@ -78,7 +78,7 @@ export const verifyGoogleSignIn = async (idToken: string) => {
   if (user && !user.googleId) {
     user = await prisma.user.update({ where: { id: user.id }, data: { googleId } })
   } else if (!user) {
-    user = await prisma.user.create({ data: { googleId, email, name } })
+    user = await prisma.user.create({ data: { googleId, email, name, role: 'BORROWER' } })
   }
 
   const accessToken = signAccessToken(user.id)
@@ -187,7 +187,7 @@ export const verifyOtp = async (phone: string, otp: string) => {
 
   let user = await prisma.user.findUnique({ where: { phone } })
   if (!user) {
-    user = await prisma.user.create({ data: { phone } })
+    user = await prisma.user.create({ data: { phone, role: 'BORROWER' } })
   }
 
   const accessToken = signAccessToken(user.id)
@@ -340,7 +340,7 @@ export const registerUser = async (data: {
     })
   } else {
     user = await prisma.user.create({
-      data: { phone, name, email, password: hashedPassword },
+      data: { phone, name, email, password: hashedPassword, role: 'BORROWER' },
     })
   }
 
@@ -358,7 +358,8 @@ export const verifyFirebaseToken = async (
   idToken: string,
   providedName?: string,
   providedGroupCode?: string,
-  providedPassword?: string
+  providedPassword?: string,
+  providedRole?: 'BORROWER' | 'LENDER'
 ) => {
   let decodedToken;
   try {
@@ -415,7 +416,7 @@ export const verifyFirebaseToken = async (
   let isNewUser = false;
 
   if (!user) {
-    // 3. Create new user if zero matches
+    // 3. Create new user if zero matches — role defaults to BORROWER unless explicitly LENDER
     isNewUser = true;
     user = await prisma.user.create({
         data: {
@@ -423,6 +424,7 @@ export const verifyFirebaseToken = async (
             email: email || undefined,
             name: finalName,
             googleId: uid,
+            role: providedRole === 'LENDER' ? 'LENDER' : 'BORROWER',
             ...(hashedPassword ? { password: hashedPassword } : {}),
         }
     });

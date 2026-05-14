@@ -104,8 +104,8 @@ export const authApi = {
   register: (data: { phone: string; name: string; email: string; password?: string }) => 
     api.post('/auth/register', data),
   googleSignIn: (idToken: string) => api.post('/auth/google', { idToken }),
-  verifyFirebase: (idToken: string, name?: string, groupCode?: string, password?: string) =>
-    api.post('/auth/firebase', { idToken, name, groupCode, password }),
+  verifyFirebase: (idToken: string, name?: string, groupCode?: string, password?: string, role?: 'BORROWER' | 'LENDER') =>
+    api.post('/auth/firebase', { idToken, name, groupCode, password, role }),
   checkPhone: (phone: string) => api.get<{ data: { exists: boolean; hasName: boolean } }>(`/auth/check-phone?phone=${phone}`),
   setPassword: (password: string) => api.post('/auth/set-password', { password }),
   getMe: () => api.get('/auth/me'),

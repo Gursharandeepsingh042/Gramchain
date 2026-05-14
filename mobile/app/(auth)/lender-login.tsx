@@ -82,7 +82,7 @@ export default function LenderLoginScreen() {
       const userCredential = await signInWithCredential(auth, credential)
       const firebaseToken = await userCredential.user.getIdToken()
 
-      const res = await authApi.verifyFirebase(firebaseToken)
+      const res = await authApi.verifyFirebase(firebaseToken, undefined, undefined, undefined, 'LENDER')
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(accessToken, refreshToken, { ...user, role: 'LENDER' })
       router.replace('/portfolio' as any)

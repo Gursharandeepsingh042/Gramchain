@@ -94,14 +94,22 @@ const PRIVATE_KEY = getPrivateKey()
 
 // Load contract addresses (from deploy script output)
 function loadContractAddresses(): Record<string, string> {
-  try {
-    const filePath = path.join(__dirname, '..', 'constants', 'contracts.json')
-    if (fs.existsSync(filePath)) {
-      return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-    }
-  } catch (e) {
-    logger.warn('contracts.json not found — using env vars')
+  // Try multiple paths: compiled dist/ first, then source src/ (dev), then cwd
+  const candidates = [
+    path.join(__dirname, '..', 'constants', 'contracts.json'),
+    path.join(process.cwd(), 'dist', 'constants', 'contracts.json'),
+    path.join(process.cwd(), 'src', 'constants', 'contracts.json'),
+  ]
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+        logger.info({ path: filePath }, 'Loaded contract addresses')
+        return data
+      }
+    } catch (_) { /* try next */ }
   }
+  logger.warn('contracts.json not found in any candidate path — using env vars')
   return {
     loanManager: process.env.LOAN_MANAGER_ADDRESS ?? '',
     shgPoolFactory: process.env.SHG_POOL_FACTORY_ADDRESS ?? '',
