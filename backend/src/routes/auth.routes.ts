@@ -18,8 +18,17 @@ const otpLimiter = rateLimit({
 
 // General auth rate limiter
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: 100, 
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+// Stricter limiter for login/firebase to prevent brute force / token grinding
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per IP per 15 min
+  message: { success: false, error: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many login attempts. Please try again after 15 minutes.' } },
   standardHeaders: true,
   legacyHeaders: false,
 })
@@ -57,6 +66,6 @@ router.post('/set-password', authenticate, AuthController.setPassword)
 router.get('/check-phone', AuthController.checkPhone)
 
 /** @route POST /auth/firebase */
-router.post('/firebase', AuthController.verifyFirebase)
+router.post('/firebase', loginLimiter, AuthController.verifyFirebase)
 
 export default router
