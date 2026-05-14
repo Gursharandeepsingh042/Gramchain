@@ -203,10 +203,22 @@ async function backfillEvents(
       // Gradually increase batch size back after success (up to 50)
       batchSize = Math.min(batchSize * 2, 50)
     } catch (err: any) {
+      const isPruned =
+        err?.error?.code === -32701 ||
+        err?.error?.message?.includes('History has been pruned')
+
       const isRangeError =
-        err?.error?.message?.includes('block range exceeds') ||
-        err?.message?.includes('block range exceeds') ||
-        err?.shortMessage?.includes('coalesce error')
+        !isPruned && (
+          err?.error?.message?.includes('block range exceeds') ||
+          err?.message?.includes('block range exceeds') ||
+          err?.shortMessage?.includes('coalesce error')
+        )
+
+      if (isPruned) {
+        logger.warn({ fromBlock: block, currentBlock }, 'RPC history pruned — fast-forwarding to current block')
+        await saveLastBlock(currentBlock)
+        return currentBlock
+      }
 
       if (isRangeError && batchSize > MIN_BATCH) {
         // Halve batch size and retry the same range
