@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
-import { auth, getRnAuth, setPendingConfirmation, getPendingConfirmation, clearPendingConfirmation } from '@/services/firebase'
+import { auth } from '@/services/firebase'
+import { startPhoneOtp, getActivePhoneSession } from '@/services/phoneAuth'
 import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
 import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
@@ -68,9 +69,13 @@ export default function SignupScreen() {
         setError('Google sign-up failed: no token returned.')
       }
     } else if (response?.type === 'error') {
-      setError(response.error?.message || 'Google sign-up was cancelled or failed.')
+      const baseMsg = response.error?.message || 'Google sign-up was cancelled or failed.'
+      const tip = request?.redirectUri
+        ? `\n\nIf this says "redirect_uri_mismatch", add this URL to your Google OAuth Web Client → Authorized redirect URIs:\n${request.redirectUri}`
+        : ''
+      setError(baseMsg + tip)
     }
-  }, [response])
+  }, [response, request])
 
   const handleGoogleSignup = async (token: string, isIdToken = true) => {
     setLoading(true)
@@ -119,11 +124,8 @@ export default function SignupScreen() {
           return
         }
 
-        // React Native Firebase Phone Auth — no reCAPTCHA needed
-        const rnAuthMod = getRnAuth()
-        if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
-        const confirmation = await rnAuthMod().signInWithPhoneNumber(`+91${formData.phone}`)
-        setPendingConfirmation(confirmation)
+        // Native Firebase Phone Auth — requires a dev/prod build (won't work in Expo Go).
+        await startPhoneOtp(formData.phone)
         setStep(2)
       } catch (err: any) {
         setError(err.message || 'Failed to send OTP')
@@ -137,14 +139,12 @@ export default function SignupScreen() {
       }
       setLoading(true)
       try {
-        const confirmation = getPendingConfirmation()
-        if (!confirmation) throw new Error('Verification session expired. Tap back and request a new OTP.')
-        const userCredential = await confirmation.confirm(otp)
-        setPhoneFirebaseUser(userCredential.user)
-        clearPendingConfirmation()
+        const session = getActivePhoneSession()
+        if (!session) throw new Error('Verification session expired. Tap back and request a new OTP.')
+        const result = await session.confirm(otp)
+        setPhoneFirebaseUser(result.firebaseUser)
         // Verify with backend to check if user actually exists (race condition guard)
-        const idToken = await userCredential.user.getIdToken()
-        const checkRes = await authApi.verifyFirebase(idToken)
+        const checkRes = await authApi.verifyFirebase(result.idToken)
         if (!checkRes.data.data.isNewUser) {
           // Returning user — skip registration form, go directly to dashboard
           const { accessToken, refreshToken, user } = checkRes.data.data
@@ -184,7 +184,7 @@ export default function SignupScreen() {
       setLoading(true)
       try {
         // Use the native Firebase user captured at step 2.
-        const currentUser = phoneFirebaseUser || getRnAuth()?.()?.currentUser
+        const currentUser = phoneFirebaseUser
         if (!currentUser) throw new Error("Authentication session lost. Please go back to step 1.");
 
         const idToken = await currentUser.getIdToken();
@@ -297,11 +297,12 @@ export default function SignupScreen() {
                         onPress={async () => {
                             setError('')
                             try {
-                                // React Native Firebase: resend OTP
-                                const rnAuthMod = getRnAuth()
-                                if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
-                                const newConfirmation = await rnAuthMod().signInWithPhoneNumber(`+91${formData.phone}`)
-                                setPendingConfirmation(newConfirmation)
+                                const existing = getActivePhoneSession()
+                                if (existing && existing.phone === formData.phone) {
+                                    await existing.resend()
+                                } else {
+                                    await startPhoneOtp(formData.phone)
+                                }
                                 setOtp('')
                             } catch (err: any) {
                                 setError(err.message || 'Failed to resend OTP')

@@ -14,7 +14,8 @@ import Constants from 'expo-constants'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
 import { Alert } from 'react-native'
-import { auth, getRnAuth, setPendingConfirmation } from '@/services/firebase'
+import { auth } from '@/services/firebase'
+import { startPhoneOtp } from '@/services/phoneAuth'
 import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
@@ -63,9 +64,13 @@ export default function LoginScreen() {
         setError('Google sign-in failed: no token returned.')
       }
     } else if (response?.type === 'error') {
-      setError(response.error?.message || 'Google sign-in was cancelled or failed.')
+      const baseMsg = response.error?.message || 'Google sign-in was cancelled or failed.'
+      const tip = request?.redirectUri
+        ? `\n\nIf this says "redirect_uri_mismatch", add this URL to your Google OAuth Web Client → Authorized redirect URIs:\n${request.redirectUri}`
+        : ''
+      setError(baseMsg + tip)
     }
-  }, [response])
+  }, [response, request])
 
   const handleGoogleLogin = async (token: string, isIdToken = true) => {
     setLoading(true)
@@ -101,12 +106,8 @@ export default function LoginScreen() {
         }
         
         try {
-          // React Native Firebase Phone Auth — no reCAPTCHA needed (uses Play Integrity / APNs)
-          // Keep the whole ConfirmationResult so verify-otp can call .confirm(code).
-          const rnAuthMod = getRnAuth()
-          if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
-          const confirmation = await rnAuthMod().signInWithPhoneNumber(`+91${phone}`)
-          setPendingConfirmation(confirmation)
+          // Native Firebase Phone Auth — requires a dev/prod build (won't work in Expo Go).
+          await startPhoneOtp(phone)
           router.push({ pathname: '/(auth)/verify-otp', params: { phone, mode: 'login' } })
         } catch (err: any) {
           setError(err.message || 'Failed to send OTP')

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
-import { getRnAuth, setPendingConfirmation, getPendingConfirmation, clearPendingConfirmation } from '@/services/firebase'
+import { startPhoneOtp, getActivePhoneSession } from '@/services/phoneAuth'
 
 type SignupStep = 1 | 2 | 3
 
@@ -46,11 +46,12 @@ export default function LenderSignupScreen() {
     setResending(true)
     setError('')
     try {
-      // React Native Firebase: resend OTP
-      const rnAuthMod = getRnAuth()
-      if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
-      const newConfirmation = await rnAuthMod().signInWithPhoneNumber(`+91${formData.phone}`)
-      setPendingConfirmation(newConfirmation)
+      const existing = getActivePhoneSession()
+      if (existing && existing.phone === formData.phone) {
+        await existing.resend()
+      } else {
+        await startPhoneOtp(formData.phone)
+      }
       setOtp('')
     } catch (err: any) {
       setError(err.message || 'Failed to resend OTP')
@@ -85,11 +86,8 @@ export default function LenderSignupScreen() {
           return
         }
 
-        // React Native Firebase Phone Auth — no reCAPTCHA needed
-        const rnAuthMod = getRnAuth()
-        if (!rnAuthMod) throw new Error('Phone auth is not available on this platform')
-        const confirmation = await rnAuthMod().signInWithPhoneNumber(`+91${formData.phone}`)
-        setPendingConfirmation(confirmation)
+        // Native Firebase Phone Auth — requires a dev/prod build (won't work in Expo Go).
+        await startPhoneOtp(formData.phone)
         setStep(2)
       } catch (err: any) {
         setError(err.message || 'Failed to send OTP')
@@ -103,12 +101,10 @@ export default function LenderSignupScreen() {
       }
       setLoading(true)
       try {
-        // Verify OTP using the native ConfirmationResult.
-        const confirmation = getPendingConfirmation()
-        if (!confirmation) throw new Error('Verification session expired. Tap back and request a new OTP.')
-        const userCredential = await confirmation.confirm(otp)
-        setPhoneFirebaseUser(userCredential.user)
-        clearPendingConfirmation()
+        const session = getActivePhoneSession()
+        if (!session) throw new Error('Verification session expired. Tap back and request a new OTP.')
+        const result = await session.confirm(otp)
+        setPhoneFirebaseUser(result.firebaseUser)
         setStep(3)
       } catch (err: any) {
         const msg = err.code === 'auth/invalid-verification-code'
@@ -136,7 +132,7 @@ export default function LenderSignupScreen() {
 
       setLoading(true)
       try {
-        const currentUser = phoneFirebaseUser || getRnAuth()?.()?.currentUser
+        const currentUser = phoneFirebaseUser
         if (!currentUser) throw new Error('Authentication session lost. Please go back to step 1.')
 
         // Register via Firebase token verification — creates user in backend DB.

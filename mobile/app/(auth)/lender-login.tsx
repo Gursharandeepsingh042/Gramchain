@@ -68,9 +68,13 @@ export default function LenderLoginScreen() {
         setError('Google sign-in failed: no token returned.')
       }
     } else if (response?.type === 'error') {
-      setError(response.error?.message || 'Google sign-in was cancelled or failed.')
+      const baseMsg = response.error?.message || 'Google sign-in was cancelled or failed.'
+      const tip = request?.redirectUri
+        ? `\n\nIf this says "redirect_uri_mismatch", add this URL to your Google OAuth Web Client → Authorized redirect URIs:\n${request.redirectUri}`
+        : ''
+      setError(baseMsg + tip)
     }
-  }, [response])
+  }, [response, request])
 
   const handleGoogleLogin = async (token: string, isIdToken = true) => {
     setLoading(true)

@@ -14,14 +14,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "51986108180-uncj5n0cqho9g4henb4an840gdro302o.apps.googleusercontent.com",
+          "client_id": "51986108180-7ue8padqdchc8qqe599adqc22b7n2ji9.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.gramchain.gramchain"
+            "package_name": "com.gramchain.gramchain",
+            "certificate_hash": "f05ae11fa88245689aee3770e973f6f51c4d3f8d"
           }
         },
         {
-          "client_id": "51986108180-t83208fe8ia5ebr40i49u8jr472lsb9r.apps.googleusercontent.com",
+          "client_id": "51986108180-th7bmld9if0c8l57fsuvur9frjvfvg5m.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -34,15 +35,8 @@
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "51986108180-t83208fe8ia5ebr40i49u8jr472lsb9r.apps.googleusercontent.com",
+              "client_id": "51986108180-th7bmld9if0c8l57fsuvur9frjvfvg5m.apps.googleusercontent.com",
               "client_type": 3
-            },
-            {
-              "client_id": "51986108180-0rderk57ou6h3k2hf9k2g64bq5f4kp5h.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "com.gramchain.gramchain"
-              }
             }
           ]
         }
