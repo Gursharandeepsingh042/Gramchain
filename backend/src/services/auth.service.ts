@@ -259,17 +259,22 @@ export const loginWithPassword = async (identifier: string, password: string) =>
   const normalized = isPhone ? trimmed : trimmed.toLowerCase()
   const lockKey = `login:fail:${normalized}`
 
-  // A4: Check lockout
-  const redis = await getRedis()
+  // A4: Check lockout — tolerate Redis being down (treat as no lockout state)
+  const redis = await getRedis().catch(() => null)
   if (redis) {
-    const fails = parseInt((await redis.get(lockKey)) || '0', 10)
-    if (fails >= LOGIN_MAX_ATTEMPTS) {
-      const ttl = await redis.ttl(lockKey)
-      throw new AppError(
-        429,
-        'TOO_MANY_ATTEMPTS',
-        `Too many failed login attempts. Try again in ${Math.ceil(ttl / 60)} minutes.`
-      )
+    try {
+      const fails = parseInt((await redis.get(lockKey)) || '0', 10)
+      if (fails >= LOGIN_MAX_ATTEMPTS) {
+        const ttl = await redis.ttl(lockKey)
+        throw new AppError(
+          429,
+          'TOO_MANY_ATTEMPTS',
+          `Too many failed login attempts. Try again in ${Math.ceil(ttl / 60)} minutes.`
+        )
+      }
+    } catch (err) {
+      if (err instanceof AppError) throw err
+      logger.warn({ err: (err as Error).message }, 'Redis lockout check failed; continuing without lockout')
     }
   }
 
@@ -279,8 +284,12 @@ export const loginWithPassword = async (identifier: string, password: string) =>
 
   const recordFailure = async () => {
     if (!redis) return
-    const count = await redis.incr(lockKey)
-    if (count === 1) await redis.expire(lockKey, LOGIN_LOCKOUT_SECONDS)
+    try {
+      const count = await redis.incr(lockKey)
+      if (count === 1) await redis.expire(lockKey, LOGIN_LOCKOUT_SECONDS)
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, 'Redis recordFailure failed')
+    }
   }
 
   if (!user) {
