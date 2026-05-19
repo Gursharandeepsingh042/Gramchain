@@ -51,11 +51,9 @@ export default function SignupScreen() {
     : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // For Expo Go, use Web Client ID for the OAuth flow
-    // For standalone builds, Android/iOS client IDs are used
-    clientId: isExpoGo ? process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID : undefined,
-    androidClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     redirectUri,
   })
