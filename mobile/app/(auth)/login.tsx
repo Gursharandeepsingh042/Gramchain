@@ -42,6 +42,8 @@ export default function LoginScreen() {
     ? 'https://auth.expo.io/@sharan66/gramchain'
     : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
 
+  console.log('[Google Auth] clientId =', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)
+
   const [request, response, promptAsync] = Google.useAuthRequest({
     // Provide Web client ID as default clientId for Expo Go; native builds use platform-specific IDs.
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,

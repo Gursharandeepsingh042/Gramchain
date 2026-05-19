@@ -50,6 +50,8 @@ export default function SignupScreen() {
     ? 'https://auth.expo.io/@sharan66/gramchain'
     : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
 
+  console.log('[Google Auth][signup] clientId =', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)
+
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
