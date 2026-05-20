@@ -112,3 +112,9 @@ export const getDissolveStatus = async (req: AuthenticatedRequest, res: Response
   const result = await SHGService.getDissolveStatus(req.params.id as string, req.userId!)
   sendSuccess(res, result)
 }
+
+/** DELETE /shg/:id — Delete SHG (leader only, sole member only) */
+export const deleteSHG = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const result = await SHGService.deleteSHG(req.params.id as string, req.userId!)
+  sendSuccess(res, result)
+}

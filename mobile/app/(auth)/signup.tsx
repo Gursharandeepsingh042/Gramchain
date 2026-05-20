@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, ScrollView, Animated, Alert
+  TouchableOpacity, ScrollView, Alert, useWindowDimensions
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -11,7 +11,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
-import { radius, shadows, spacing } from '@/constants/design'
+import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { auth } from '@/services/firebase'
 import { startPhoneOtp, getActivePhoneSession } from '@/services/phoneAuth'
 import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
@@ -19,6 +19,8 @@ import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
 import { makeRedirectUri } from 'expo-auth-session'
 import Constants from 'expo-constants'
+import { GoogleLogo } from '@/components/ui/GoogleLogo'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 WebBrowser.maybeCompleteAuthSession()
 
@@ -41,8 +43,16 @@ export default function SignupScreen() {
   })
 
   const [otp, setOtp] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   // Holds the native Firebase user after successful OTP confirm — used by step 3.
   const [phoneFirebaseUser, setPhoneFirebaseUser] = useState<any>(null)
+
+  const insets = useSafeAreaInsets()
+  const { width, height } = useWindowDimensions()
+  const styles = useMemo(
+    () => createStyles({ width, height, topInset: insets.top, bottomInset: insets.bottom }),
+    [width, height, insets.bottom, insets.top],
+  )
 
   // Google Auth — use explicit redirect URI for Expo Go, auto-detect for standalone
   const isExpoGo = Constants.appOwnership === 'expo'
@@ -53,9 +63,10 @@ export default function SignupScreen() {
   console.log('[Google Auth][signup] clientId =', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)
 
   const [request, response, promptAsync] = Google.useAuthRequest({
+    // Expo Go: only send the Web client. Native builds: send platform IDs.
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     redirectUri,
   })
@@ -99,6 +110,15 @@ export default function SignupScreen() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleGoogleButtonPress = () => {
+    if (!request) {
+      setError('Google sign-up is still preparing. Please try again in a moment.')
+      return
+    }
+    setError('')
+    promptAsync().catch(() => setError('Google sign-up was cancelled.'))
   }
 
   const handleContinue = async () => {
@@ -209,22 +229,31 @@ export default function SignupScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => {
-            if (step === 1) router.back()
-            else if (step === 2) setStep(1)
-            else setStep(2)
-          }} 
-          style={styles.backBtn}
-        >
-            <Ionicons name="chevron-back" size={24} color={colors.surface} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>GramChain</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity 
+            onPress={() => {
+              if (step === 1) router.back()
+              else if (step === 2) setStep(1)
+              else setStep(2)
+            }} 
+            style={styles.backBtn}
+          >
+              <Ionicons name="chevron-back" size={24} color={colors.surface} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>GramChain</Text>
+          <View style={{ width: 40 }} />
+        </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.progressContainer}>
             <View style={styles.stepIndicator}>
                 <View style={[styles.dot, step >= 1 && styles.dotActive]} />
@@ -270,10 +299,10 @@ export default function SignupScreen() {
 
                     <Button
                         label="Sign up with Google"
-                        onPress={() => promptAsync()}
+                        onPress={handleGoogleButtonPress}
                         variant="outline"
                         style={styles.googleBtn}
-                        icon={<Ionicons name="logo-google" size={20} color={colors.primary[600]} />}
+                        icon={<GoogleLogo size={20} />}
                     />
                 </View>
             )}
@@ -355,8 +384,13 @@ export default function SignupScreen() {
                             placeholder="Minimum 8 characters"
                             value={formData.password}
                             onChangeText={(t) => setFormData({...formData, password: t})}
-                            secureTextEntry
+                            secureTextEntry={!showPassword}
                             icon={<Ionicons name="lock-closed-outline" size={20} color={colors.gray[400]} />}
+                            rightIcon={
+                              <TouchableOpacity onPress={() => setShowPassword(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <Ionicons name={showPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color={colors.gray[400]} />
+                              </TouchableOpacity>
+                            }
                         />
                         {formData.password.length > 0 && !/^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(formData.password) && (
                             <Text style={{ color: colors.gray[500], fontSize: 11, marginTop: 4, marginLeft: 4 }}>
@@ -408,213 +442,253 @@ export default function SignupScreen() {
             </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.primary[600],
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-  },
-  backBtn: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.surface,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  progressContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  stepIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.primary[400],
-  },
-  dotActive: {
-    backgroundColor: colors.secondary[400],
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: colors.surface,
-  },
-  line: {
-    width: 60,
-    height: 3,
-    backgroundColor: colors.primary[400],
-    marginHorizontal: 5,
-  },
-  lineActive: {
-    backgroundColor: colors.secondary[400],
-  },
-  stepText: {
-    color: colors.surface,
-    fontSize: 14,
-    opacity: 0.9,
-  },
-  stepTitle: {
-    color: colors.surface,
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: 5,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-    padding: 30,
-    flex: 1,
-    minHeight: 600,
-    ...shadows.lg,
-  },
-  inputGroup: {
-    marginTop: 10,
-    gap: 15,
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  countryCode: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[50],
-    paddingHorizontal: 12,
-    height: 52,
-    borderRadius: radius.input,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    gap: 5,
-    marginTop: 18,
-  },
-  flag: {
-    fontSize: 18,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    paddingRight: 10,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.primary[400],
-    marginRight: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primary[600],
-    borderColor: colors.primary[600],
-  },
-  checkboxText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.gray[600],
-    lineHeight: 18,
-  },
-  linkText: {
-    color: colors.primary[600],
-    fontWeight: '700',
-  },
-  continueBtn: {
-    marginTop: 30,
-    borderRadius: radius.pill,
-    height: 56,
-    backgroundColor: colors.secondary[500],
-  },
-  loginLink: {
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  loginLinkText: {
-    fontSize: 15,
-    color: colors.gray[600],
-  },
-  loginLinkBold: {
-    color: colors.primary[800],
-    fontWeight: '800',
-  },
-  errorText: {
-    color: colors.danger[500],
-    textAlign: 'center',
-    marginTop: 15,
-    fontSize: 14,
-  },
-  introText: {
-    fontSize: 16,
-    color: colors.gray[600],
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.gray[200],
-  },
-  dividerText: {
-    marginHorizontal: 15,
-    color: colors.gray[400],
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  googleBtn: {
-    borderRadius: radius.pill,
-    height: 52,
-    borderColor: colors.gray[200],
-  },
-  otpHint: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: colors.gray[600],
-    lineHeight: 24,
-    marginBottom: 20,
-  },
-  phoneBold: {
-    fontWeight: '800',
-    color: colors.primary[700],
-  },
-  otpInput: {
-    textAlign: 'center',
-    fontSize: 24,
-    letterSpacing: 10,
-    fontWeight: '800',
-  },
-  resendBtn: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  resendText: {
-    color: colors.primary[600],
-    fontWeight: '600',
-  }
-})
+type StyleParams = {
+  width: number
+  height: number
+  topInset: number
+  bottomInset: number
+}
+
+const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => {
+  const isTablet = width >= 768
+  const horizontalPadding = getScreenPadding(width)
+  const cardRadius = isTablet ? 48 : 40
+  const cardPaddingH = isTablet ? 36 : 24
+  const cardPaddingV = isTablet ? 36 : 28
+  const footerPadding = bottomInset + (isTablet ? 40 : 28)
+  const minFormHeight = Math.max(height * (isTablet ? 0.5 : 0.62), isTablet ? 520 : 560)
+  const formMaxWidth = isTablet ? FORM_MAX_WIDTH : undefined
+  const dividerVertical = isTablet ? 28 : 22
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.primary[900],
+    },
+    keyboard: {
+      flex: 1,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: horizontalPadding,
+      paddingTop: 16,
+      paddingBottom: 12,
+      maxWidth: formMaxWidth,
+      width: '100%',
+      alignSelf: 'center',
+    },
+    backBtn: {
+      padding: 10,
+      borderRadius: radius.pill,
+      backgroundColor: 'rgba(255,255,255,0.15)',
+    },
+    headerTitle: {
+      fontSize: isTablet ? 24 : 20,
+      fontWeight: '800',
+      color: colors.surface,
+      letterSpacing: 0.4,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: horizontalPadding,
+      paddingBottom: footerPadding,
+      paddingTop: 16,
+      gap: 24,
+    },
+    progressContainer: {
+      alignItems: 'center',
+      paddingVertical: isTablet ? 24 : 20,
+      gap: 8,
+      maxWidth: formMaxWidth,
+      width: '100%',
+      alignSelf: 'center',
+    },
+    stepIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 6,
+      gap: 8,
+    },
+    dot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: colors.primary[400],
+    },
+    dotActive: {
+      backgroundColor: colors.secondary[400],
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 3,
+      borderColor: colors.surface,
+    },
+    line: {
+      width: 52,
+      height: 3,
+      backgroundColor: colors.primary[400],
+    },
+    lineActive: {
+      backgroundColor: colors.secondary[400],
+    },
+    stepText: {
+      color: colors.surface,
+      fontSize: isTablet ? 15 : 14,
+      opacity: 0.9,
+    },
+    stepTitle: {
+      color: colors.surface,
+      fontSize: isTablet ? 24 : 22,
+      fontWeight: '800',
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    formCard: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: cardRadius,
+      borderTopRightRadius: cardRadius,
+      paddingHorizontal: cardPaddingH,
+      paddingVertical: cardPaddingV,
+      minHeight: minFormHeight,
+      ...shadows.lg,
+      gap: 24,
+      width: '100%',
+      maxWidth: formMaxWidth,
+      alignSelf: 'center',
+    },
+    inputGroup: {
+      gap: isTablet ? 18 : 15,
+    },
+    phoneRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    countryCode: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.gray[50],
+      paddingHorizontal: 12,
+      height: 52,
+      borderRadius: radius.input,
+      borderWidth: 1,
+      borderColor: colors.gray[200],
+      gap: 6,
+      marginTop: 18,
+    },
+    flag: {
+      fontSize: 18,
+    },
+    introText: {
+      fontSize: isTablet ? 18 : 16,
+      color: colors.gray[600],
+      textAlign: 'center',
+    },
+    dividerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: isTablet ? 24 : 20,
+      gap: 12,
+    },
+    dividerLine: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.gray[200],
+    },
+    dividerText: {
+      color: colors.gray[400],
+      fontWeight: '700',
+      fontSize: isTablet ? 13 : 12,
+      letterSpacing: 1,
+    },
+    googleBtn: {
+      borderRadius: radius.pill,
+      height: 52,
+      borderColor: colors.gray[200],
+    },
+    otpHint: {
+      fontSize: isTablet ? 18 : 16,
+      textAlign: 'center',
+      color: colors.gray[600],
+      lineHeight: 24,
+    },
+    phoneBold: {
+      fontWeight: '800',
+      color: colors.primary[700],
+    },
+    otpInput: {
+      textAlign: 'center',
+      fontSize: isTablet ? 26 : 24,
+      letterSpacing: 10,
+      fontWeight: '800',
+    },
+    resendBtn: {
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    resendText: {
+      color: colors.primary[600],
+      fontWeight: '600',
+    },
+    checkboxRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 10,
+      paddingRight: 10,
+      gap: 12,
+    },
+    checkbox: {
+      width: 22,
+      height: 22,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: colors.primary[400],
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    checkboxChecked: {
+      backgroundColor: colors.primary[600],
+      borderColor: colors.primary[600],
+    },
+    checkboxText: {
+      flex: 1,
+      fontSize: isTablet ? 14 : 13,
+      color: colors.gray[600],
+      lineHeight: 19,
+    },
+    linkText: {
+      color: colors.primary[600],
+      fontWeight: '700',
+    },
+    continueBtn: {
+      marginTop: 12,
+      borderRadius: radius.pill,
+      height: 56,
+    },
+    loginLink: {
+      alignItems: 'center',
+      marginTop: 12,
+    },
+    loginLinkText: {
+      fontSize: isTablet ? 16 : 15,
+      color: colors.gray[600],
+    },
+    loginLinkBold: {
+      color: colors.primary[800],
+      fontWeight: '800',
+    },
+    errorText: {
+      color: colors.danger[500],
+      textAlign: 'center',
+      marginTop: 12,
+      fontSize: isTablet ? 15 : 14,
+    },
+  })
+}

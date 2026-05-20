@@ -197,7 +197,7 @@ describe('Auth Service', () => {
 
       const result = await verifyOtp('9876543210', '123456')
       expect(mockPrisma.user.create).toHaveBeenCalledWith({
-        data: { phone: '9876543210' },
+        data: { phone: '9876543210', role: 'BORROWER' },
       })
       expect(result.user.id).toBe('new-user')
     })

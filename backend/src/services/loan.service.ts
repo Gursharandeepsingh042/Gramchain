@@ -168,8 +168,11 @@ export const applyLoan = async (params: {
 
   // Fan-out notification to all group members (except the applicant)
   try {
-    const { notifyGroup } = await import('./notification.service')
+    const { notifyGroup, notifyLenders } = await import('./notification.service')
     const applicantName = membership.user.name || 'A member'
+    const groupName = membership.shg.name
+    
+    // Notify group members for approval
     await notifyGroup(
       shgId,
       memberId,
@@ -177,6 +180,14 @@ export const applyLoan = async (params: {
       'New Loan Request',
       `${applicantName} has requested a loan of ₹${Number(amount).toLocaleString('en-IN')}. Tap to review.`,
       { type: 'LOAN_APPROVAL_REQUEST', loanId: loan.id, shgId }
+    )
+
+    // Notify all lenders about new loan opportunity
+    await notifyLenders(
+      'LOAN_OPPORTUNITY',
+      'New Loan Opportunity',
+      `${groupName} has applied for a loan of ₹${Number(amount).toLocaleString('en-IN')}. Review and fund this opportunity.`,
+      { type: 'LOAN_OPPORTUNITY', loanId: loan.id, shgId, groupName, amount }
     )
   } catch (notifErr) {
     logger.warn({ notifErr }, 'Loan notification fan-out failed (non-fatal)')

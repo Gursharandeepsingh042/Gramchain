@@ -38,7 +38,7 @@ const hi = {
     profile: 'प्रोफ़ाइल',
   },
   dashboard: {
-    greeting: 'नमस्ते, {{name}} 🙏',
+    greeting: 'स्वागत',
     groupSavings: 'समूह बचत पूल',
     activeLoan: 'सक्रिय ऋण',
     nextEmi: 'अगली EMI: ₹{{amount}}',

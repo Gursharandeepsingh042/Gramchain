@@ -38,7 +38,7 @@ const en = {
     profile: 'Profile',
   },
   dashboard: {
-    greeting: 'Namaste, {{name}} 🙏',
+    greeting: 'Welcome',
     groupSavings: 'Group Savings Pool',
     activeLoan: 'Active Loan',
     nextEmi: 'Next EMI: ₹{{amount}}',

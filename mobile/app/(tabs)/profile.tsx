@@ -70,7 +70,7 @@ interface BankAccount {
 
 export default function ProfileScreen() {
   const { t, i18n } = useTranslation()
-  const { user, logout } = useAuthStore()
+  const { user, logout, isKycComplete } = useAuthStore()
 
   // Modal visibility
   const [showBank, setShowBank]   = useState(false)
@@ -103,6 +103,14 @@ export default function ProfileScreen() {
   const [showWallet, setShowWallet]   = useState(false)
   const [copiedAddr, setCopiedAddr]   = useState(false)
 
+  // Edit profile modal
+  const [showEditProfile, setShowEditProfile] = useState(false)
+  const [editName, setEditName]               = useState('')
+  const [editLoading, setEditLoading]        = useState(false)
+
+  // Language selection modal
+  const [showLanguage, setShowLanguage] = useState(false)
+
   // Animation
   const fadeAnim = useRef(new Animated.Value(0)).current
   useEffect(() => {
@@ -124,6 +132,32 @@ export default function ProfileScreen() {
   const resetBankForm = () => {
     setBankName(''); setAcctNum(''); setIfsc('')
     setRefId(''); setOtp(''); setBankStep('FORM')
+  }
+
+  // Bank linking requires verified KYC. Skipping KYC at signup lets the user
+  // into the dashboard, but adding a real bank account must be gated until
+  // identity is verified. We clear `kycSkipped` so the root layout routes
+  // them to the KYC screen on `replace('/')`.
+  const handleAddBankPress = () => {
+    if (!isKycComplete) {
+      Alert.alert(
+        'KYC Required',
+        'You must complete KYC verification before linking a bank account. This protects you and the platform from fraud.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Complete KYC',
+            onPress: () => {
+              useAuthStore.setState({ kycSkipped: false })
+              setShowBank(false)
+              router.replace('/')
+            },
+          },
+        ]
+      )
+      return
+    }
+    setShowAddBank(true)
   }
 
   const handleInitiate = async () => {
@@ -175,6 +209,31 @@ export default function ProfileScreen() {
     } finally { setPwLoading(false) }
   }
 
+  const handleUpdateProfile = async () => {
+    if (!editName.trim()) return Alert.alert('Error', 'Name cannot be empty')
+    setEditLoading(true)
+    try {
+      // TODO: Uncomment when backend implements /user/profile PATCH endpoint
+      // await authApi.updateProfile({ name: editName.trim() })
+      
+      // For now, just refresh user data from backend
+      const res = await authApi.getMe()
+      const updatedUser = res.data.data.user
+      useAuthStore.getState().setAuth(useAuthStore.getState().token!, useAuthStore.getState().refreshToken!, updatedUser)
+      Alert.alert('Success', 'Profile updated!')
+      setShowEditProfile(false)
+    } catch (e: any) {
+      Alert.alert('Error', e.response?.data?.error?.message || 'Failed to update profile.')
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  const openEditProfile = () => {
+    setEditName(user?.name || '')
+    setShowEditProfile(true)
+  }
+
   const handleCopyAddress = () => {
     if (!user?.walletAddress) return
     Clipboard.setStringAsync(user.walletAddress)
@@ -195,7 +254,22 @@ export default function ProfileScreen() {
     ])
   }
 
-  const toggleLang = (val: boolean) => { void i18n.changeLanguage(val ? 'en' : 'hi') }
+  const toggleLang = (lang: string) => {
+    void i18n.changeLanguage(lang)
+    setShowLanguage(false)
+  }
+
+  const LANGUAGES = [
+    { code: 'en', name: 'English', native: 'English' },
+    { code: 'hi', name: 'Hindi', native: 'हिंदी' },
+    { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+    { code: 'ta', name: 'Tamil', native: 'தமிழ்' },
+    { code: 'bn', name: 'Bangla', native: 'বাংলা' },
+    { code: 'te', name: 'Telugu', native: 'తెలుగు' },
+    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
+  ]
+
+  const currentLang = LANGUAGES.find(l => l.code === i18n.language) || LANGUAGES[0]
 
   const isVerified = user?.kycStatus === 'VERIFIED'
   const name       = user?.name || user?.phone || 'U'
@@ -246,7 +320,14 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.userName}>{user?.name || 'GramChain User'}</Text>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName}>{user?.name || 'GramChain User'}</Text>
+              {!isVerified && (
+                <TouchableOpacity onPress={openEditProfile} style={styles.editIconBtn} hitSlop={8}>
+                  <Ionicons name="pencil" size={16} color={colors.primary[600]} />
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={styles.userPhone}>📞 +91 {user?.phone || '—'}</Text>
             <View style={styles.badgeRow}>
               <Badge label={isVerified ? 'KYC Verified' : 'KYC Pending'} variant={isVerified ? 'success' : 'warning'} />
@@ -299,17 +380,9 @@ export default function ProfileScreen() {
           <Text style={styles.groupTitle}>Preferences</Text>
           <View style={[styles.settingsGroup, shadows.xs]}>
             <SettingRow
-              icon="🌐" label="Language / भाषा"
-              trailing={
-                <View style={styles.langToggle}>
-                  <Text style={styles.langLabel}>{i18n.language === 'en' ? 'English' : 'हिंदी'}</Text>
-                  <Switch
-                    value={i18n.language === 'en'} onValueChange={toggleLang}
-                    trackColor={{ false: colors.gray[300], true: colors.primary[400] }}
-                    thumbColor={colors.surface} style={{ transform: [{ scale: 0.85 }] }}
-                  />
-                </View>
-              }
+              icon="🌐" label="Language"
+              value={currentLang.native}
+              onPress={() => setShowLanguage(true)}
             />
             <View style={styles.rowDivider} />
             <SettingRow icon="🔔" label="Notifications" value="Enabled" onPress={() => {}} />
@@ -380,7 +453,7 @@ export default function ProfileScreen() {
               </View>
             ))}
 
-            <TouchableOpacity style={styles.addBankBtn} onPress={() => setShowAddBank(true)}>
+            <TouchableOpacity style={styles.addBankBtn} onPress={handleAddBankPress}>
               <Ionicons name="add-circle-outline" size={20} color={colors.primary[600]} />
               <Text style={styles.addBankBtnText}>Add Bank Account</Text>
             </TouchableOpacity>
@@ -620,6 +693,67 @@ export default function ProfileScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* Edit Profile Modal */}
+      <Modal visible={showEditProfile} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowEditProfile(false)}>
+        <SafeAreaView style={styles.modalSafe}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <TouchableOpacity onPress={() => setShowEditProfile(false)} style={styles.closeBtn}>
+              <Ionicons name="close" size={22} color={colors.text.primary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalBody}>
+            <Text style={styles.inputLabel}>Display Name</Text>
+            <Text style={styles.inputHint}>This is a temporary name. Once you complete KYC, your verified name will appear instead.</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Enter your name"
+              value={editName}
+              onChangeText={setEditName}
+              autoCapitalize="words"
+            />
+            <Button
+              label="Save Changes"
+              onPress={handleUpdateProfile}
+              loading={editLoading}
+              disabled={!editName.trim() || editLoading}
+              size="xl"
+              style={{ marginTop: 24 }}
+            />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Language Selection Modal */}
+      <Modal visible={showLanguage} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLanguage(false)}>
+        <SafeAreaView style={styles.modalSafe}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Language</Text>
+            <TouchableOpacity onPress={() => setShowLanguage(false)} style={styles.closeBtn}>
+              <Ionicons name="close" size={22} color={colors.text.primary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            {LANGUAGES.map((lang) => (
+              <TouchableOpacity
+                key={lang.code}
+                style={[
+                  styles.languageOption,
+                  currentLang.code === lang.code && { backgroundColor: colors.primary[50] }
+                ]}
+                onPress={() => toggleLang(lang.code)}
+              > 
+                <Text style={styles.languageName}>{lang.name}</Text>
+                <Text style={styles.languageNative}>{lang.native}</Text>
+                {currentLang.code === lang.code && (
+                  <Ionicons name="checkmark-circle" size={20} color={colors.primary[600]} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -636,6 +770,8 @@ const styles = StyleSheet.create({
   verifiedBadge: { position: 'absolute', bottom: -2, right: -2, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.primary[500], borderWidth: 3, borderColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   verifiedIcon: { color: colors.text.inverse, fontSize: 12, fontWeight: '800' },
   userName: { fontSize: 22, fontWeight: '800', color: colors.text.primary, letterSpacing: -0.3, marginBottom: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  editIconBtn: { padding: 6 },
   userPhone: { fontSize: 14, color: colors.text.secondary, marginBottom: 10 },
   badgeRow: { flexDirection: 'row', gap: 8 },
 
@@ -675,6 +811,11 @@ const styles = StyleSheet.create({
   closeBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.gray[100], alignItems: 'center', justifyContent: 'center' },
   modalBody: { padding: 20, paddingBottom: 60 },
 
+  // ── Edit Profile Modal ──
+  inputLabel: { fontSize: 14, fontWeight: '700', color: colors.text.primary, marginBottom: 6 },
+  inputHint: { fontSize: 12, color: colors.text.secondary, marginBottom: 12, lineHeight: 18 },
+  textInput: { backgroundColor: colors.gray[50], borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text.primary, borderWidth: 1, borderColor: colors.gray[200] },
+
   // ── Bank Modal ──
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyIcon: { fontSize: 44, marginBottom: 12 },
@@ -690,7 +831,6 @@ const styles = StyleSheet.create({
   addBankBtnText: { color: colors.primary[700], fontWeight: '700', fontSize: 15 },
 
   // ── Add Bank Form ──
-  inputLabel: { fontSize: 13, fontWeight: '700', color: colors.text.secondary, marginBottom: 6 },
   input: { borderWidth: 1.5, borderColor: colors.gray[200], borderRadius: radius.md, padding: 13, marginBottom: 16, fontSize: 16, color: colors.text.primary, backgroundColor: colors.background },
   otpHint: { fontSize: 14, color: colors.text.secondary, lineHeight: 22, marginBottom: 16 },
   otpInput: { textAlign: 'center', fontSize: 24, letterSpacing: 8, fontWeight: '700' },
@@ -758,4 +898,19 @@ const styles = StyleSheet.create({
   walletInfoIcon: { fontSize: 22, marginTop: 2 },
   walletInfoTitle: { fontSize: 14, fontWeight: '700', color: colors.text.primary, marginBottom: 3 },
   walletInfoDesc: { fontSize: 13, color: colors.text.secondary, lineHeight: 19, flex: 1 },
+
+  // ── Language Selection Modal ──
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: radius.lg,
+    marginBottom: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
+  },
+  languageName: { fontSize: 16, fontWeight: '600', color: colors.text.primary },
+  languageNative: { fontSize: 14, color: colors.text.secondary, marginLeft: 8 },
 })

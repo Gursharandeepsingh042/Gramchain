@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, Image, ScrollView, Animated
+  TouchableOpacity, Image, ScrollView, useWindowDimensions, Animated
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -22,8 +22,9 @@ import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
-import { radius, shadows, spacing } from '@/constants/design'
+import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 WebBrowser.maybeCompleteAuthSession()
 
@@ -33,8 +34,27 @@ export default function LoginScreen() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Entrance animations
+  const headerAnim = useRef(new Animated.Value(0)).current
+  const formAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.stagger(150, [
+      Animated.spring(headerAnim, { toValue: 1, friction: 8, tension: 60, useNativeDriver: true }),
+      Animated.spring(formAnim, { toValue: 1, friction: 9, tension: 55, useNativeDriver: true }),
+    ]).start()
+  }, [])
+
+  const insets = useSafeAreaInsets()
+  const { width, height } = useWindowDimensions()
+  const styles = useMemo(
+    () => createStyles({ width, height, topInset: insets.top, bottomInset: insets.bottom }),
+    [width, height, insets.bottom, insets.top],
+  )
 
   // Google Auth — use explicit redirect URI for Expo Go, auto-detect for standalone
   const isExpoGo = Constants.appOwnership === 'expo'
@@ -45,10 +65,14 @@ export default function LoginScreen() {
   console.log('[Google Auth] clientId =', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // Provide Web client ID as default clientId for Expo Go; native builds use platform-specific IDs.
+    // In Expo Go we MUST send only the Web client ID against the auth.expo.io
+    // proxy redirect. Passing androidClientId/iosClientId in Expo Go makes
+    // expo-auth-session pick the platform client, which Google then rejects
+    // with the "deleted_client / authorized blocked" page because the
+    // Android/iOS clients don't accept the HTTPS proxy redirect URI.
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     redirectUri,
   })
@@ -126,7 +150,7 @@ export default function LoginScreen() {
       } else {
         const cred = email.trim()
         if (!cred) {
-          setError('Please enter your email or phone number')
+          setError('Please enter your email')
           setLoading(false)
           return
         }
@@ -143,7 +167,7 @@ export default function LoginScreen() {
           setAuth(accessToken, refreshToken, user)
 
           // Save to secure store for biometric login
-          await SecureStore.setItemAsync('saved_email', cred)
+          await SecureStore.setItemAsync('saved_email', email)
           await SecureStore.setItemAsync('saved_password', password)
 
           router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
@@ -206,35 +230,59 @@ export default function LoginScreen() {
 
 
 
+  const handleGooglePress = () => {
+    if (!request) {
+      setError('Google sign-in is still preparing. Please try again in a moment.')
+      return
+    }
+    setError('')
+    promptAsync().catch(() => setError('Google sign-in was cancelled.'))
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Back button */}
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => router.replace('/role-select' as any)}
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <Ionicons name="chevron-back" size={24} color={colors.primary[600]} />
-      </TouchableOpacity>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.replace('/role-select' as any)}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.primary[600]} />
+          </TouchableOpacity>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
+        <Animated.View style={[styles.header, {
+          opacity: headerAnim,
+          transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
+        }]}>
             <View style={styles.logoContainer}>
                 <Image 
-                    source={{ uri: 'https://img.icons8.com/clouds/200/leaf.png' }}
+                    source={require('../../assets/icon.png')}
                     style={styles.logo}
+                    resizeMode="cover"
                 />
             </View>
             <Text style={styles.appName}>GramChain</Text>
             <Text style={styles.tagline}>Grow Together with Trust</Text>
-        </View>
+        </Animated.View>
 
-        <View style={styles.formCard}>
+        <Animated.View style={[styles.formCard, {
+          opacity: formAnim,
+          transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
+        }]}>
             <View style={styles.modeToggle}>
                 <TouchableOpacity 
                     style={[styles.modeTab, loginMode === 'password' && styles.modeTabActive]}
                     onPress={() => setLoginMode('password')}
                 >
-                    <Text style={[styles.modeTabText, loginMode === 'password' && styles.modeTabTextActive]}>Password</Text>
+                    <Text style={[styles.modeTabText, loginMode === 'password' && styles.modeTabTextActive]}>Email</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                     style={[styles.modeTab, loginMode === 'otp' && styles.modeTabActive]}
@@ -258,8 +306,8 @@ export default function LoginScreen() {
                 ) : (
                     <>
                         <Input
-                            label="Email or Phone Number"
-                            placeholder="example@mail.com  or  9876543210"
+                            label="Email"
+                            placeholder="example@mail.com"
                             value={email}
                             onChangeText={setEmail}
                             keyboardType="email-address"
@@ -271,8 +319,13 @@ export default function LoginScreen() {
                             placeholder="Enter your password"
                             value={password}
                             onChangeText={setPassword}
-                            secureTextEntry
+                            secureTextEntry={!showPassword}
                             icon={<Ionicons name="lock-closed-outline" size={20} color={colors.gray[400]} />}
+                            rightIcon={
+                              <TouchableOpacity onPress={() => setShowPassword(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <Ionicons name={showPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color={colors.gray[400]} />
+                              </TouchableOpacity>
+                            }
                         />
                         <TouchableOpacity 
                             style={styles.forgotPass}
@@ -313,7 +366,7 @@ export default function LoginScreen() {
 
             <Button
                 label="Login with Google"
-                onPress={() => promptAsync()}
+                onPress={handleGooglePress}
                 variant="outline"
                 icon={<GoogleLogo size={20} />}
                 size="xl"
@@ -321,7 +374,7 @@ export default function LoginScreen() {
             />
 
 
-        </View>
+        </Animated.View>
 
         <View style={styles.footer}>
             <Text style={styles.footerText}>New to GramChain? </Text>
@@ -329,157 +382,194 @@ export default function LoginScreen() {
                 <Text style={styles.registerText}>Sign Up Now</Text>
             </TouchableOpacity>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.primary[900], // Deep green background like TrustSeed
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  backBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    alignSelf: 'flex-start',
-  },
-  header: {
-    alignItems: 'center',
-    paddingTop: 40,
-    paddingBottom: 30,
-  },
-  logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...shadows.lg,
-  },
-  logo: {
-    width: 70,
-    height: 70,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.surface,
-    marginTop: 15,
-  },
-  tagline: {
-    fontSize: 16,
-    color: colors.primary[100],
-    opacity: 0.8,
-    marginTop: 5,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-    padding: 30,
-    flex: 1,
-    minHeight: 500,
-  },
-  inputGroup: {
-    marginTop: 10,
-    gap: 15,
-  },
-  forgotPass: {
-    alignSelf: 'flex-end',
-    marginTop: -5,
-  },
-  forgotPassText: {
-    color: colors.secondary[600],
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  loginBtn: {
-    marginTop: 25,
-    borderRadius: radius.pill,
-    height: 56,
-  },
-  biometricBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    gap: 8,
-  },
-  biometricText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 25,
-  },
-  line: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.gray[200],
-  },
-  dividerText: {
-    marginHorizontal: 15,
-    color: colors.gray[500],
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  googleBtn: {
-    borderRadius: radius.pill,
-    height: 56,
-    borderColor: colors.gray[200],
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
-    paddingBottom: 20,
-  },
-  footerText: {
-    color: colors.gray[100],
-    fontSize: 15,
-  },
-  registerText: {
-    color: colors.secondary[400],
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  errorText: {
-    color: colors.danger[500],
-    textAlign: 'center',
-    marginTop: 10,
-    fontSize: 14,
-  },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.gray[100],
-    borderRadius: radius.pill,
-    padding: 4,
-    marginBottom: 20,
-  },
-  modeTab: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: radius.pill,
-  },
-  modeTabActive: {
-    backgroundColor: colors.surface,
-    ...shadows.sm,
-  },
-  modeTabText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.gray[500],
-  },
-  modeTabTextActive: {
-    color: colors.primary[700],
-  },
-})
+type StyleParams = {
+  width: number
+  height: number
+  topInset: number
+  bottomInset: number
+}
+
+const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => {
+  const isTablet = width >= 768
+  const isWide = width >= 1024
+  const horizontalPadding = getScreenPadding(width)
+  const logoContainerSize = isTablet ? 120 : 112
+  const logoSize = isTablet ? 92 : 88
+  const cardRadius = isTablet ? 48 : 40
+  const formMinHeight = Math.max(height * (isTablet ? 0.5 : 0.62), isTablet ? 520 : 560)
+  const footerPadding = bottomInset + (isTablet ? 40 : 28)
+  const formMaxWidth = isTablet ? FORM_MAX_WIDTH : undefined
+  const dividerVertical = isTablet ? 28 : 22
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.primary[900],
+    },
+    keyboard: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: horizontalPadding,
+      paddingTop: 16,
+      paddingBottom: footerPadding,
+    },
+    backBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      alignSelf: 'flex-start',
+      borderRadius: radius.pill,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+    },
+    header: {
+      alignItems: 'center',
+      gap: isTablet ? 18 : 14,
+      marginBottom: isTablet ? 40 : 32,
+      maxWidth: formMaxWidth,
+      width: '100%',
+      alignSelf: 'center',
+    },
+    logoContainer: {
+      width: logoContainerSize,
+      height: logoContainerSize,
+      borderRadius: logoContainerSize / 2,
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+      overflow: 'hidden',
+      ...shadows.lg,
+    },
+    logo: {
+      width: logoContainerSize,
+      height: logoContainerSize,
+    },
+    appName: {
+      fontSize: isWide ? 42 : isTablet ? 36 : 34,
+      fontWeight: '800',
+      color: colors.surface,
+      letterSpacing: 0.5,
+    },
+    tagline: {
+      fontSize: isTablet ? 18 : 16,
+      color: colors.primary[100],
+      opacity: 0.85,
+    },
+    formCard: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: cardRadius,
+      borderTopRightRadius: cardRadius,
+      paddingHorizontal: isTablet ? 36 : 24,
+      paddingVertical: isTablet ? 36 : 28,
+      width: '100%',
+      alignSelf: 'center',
+      maxWidth: formMaxWidth,
+      minHeight: formMinHeight,
+      gap: 24,
+      ...shadows.lg,
+    },
+    inputGroup: {
+      gap: isTablet ? 18 : 15,
+    },
+    forgotPass: {
+      alignSelf: 'flex-end',
+      marginTop: -6,
+    },
+    forgotPassText: {
+      color: colors.secondary[600],
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '600',
+    },
+    loginBtn: {
+      marginTop: 12,
+      borderRadius: radius.pill,
+      height: 56,
+    },
+    biometricBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 16,
+      gap: 8,
+    },
+    biometricText: {
+      fontSize: isTablet ? 16 : 15,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: dividerVertical,
+      gap: 12,
+    },
+    line: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.gray[200],
+    },
+    dividerText: {
+      color: colors.gray[500],
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+      letterSpacing: 1,
+    },
+    googleBtn: {
+      borderRadius: radius.pill,
+      height: 56,
+      borderColor: colors.gray[200],
+    },
+    footer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 24,
+      gap: 6,
+    },
+    footerText: {
+      color: colors.gray[100],
+      fontSize: isTablet ? 16 : 15,
+    },
+    registerText: {
+      color: colors.secondary[400],
+      fontSize: isTablet ? 16 : 15,
+      fontWeight: '800',
+    },
+    errorText: {
+      color: colors.danger[500],
+      textAlign: 'center',
+      marginTop: 6,
+      fontSize: isTablet ? 15 : 14,
+    },
+    modeToggle: {
+      flexDirection: 'row',
+      backgroundColor: colors.gray[100],
+      borderRadius: radius.pill,
+      padding: 4,
+    },
+    modeTab: {
+      flex: 1,
+      paddingVertical: isTablet ? 12 : 10,
+      alignItems: 'center',
+      borderRadius: radius.pill,
+    },
+    modeTabActive: {
+      backgroundColor: colors.surface,
+      ...shadows.sm,
+    },
+    modeTabText: {
+      fontSize: isTablet ? 16 : 15,
+      fontWeight: '600',
+      color: colors.gray[500],
+    },
+    modeTabTextActive: {
+      color: colors.primary[700],
+    },
+  })
+}

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import {
-  View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Image
+  View, Text, StyleSheet, Animated, TouchableOpacity, Image, useWindowDimensions
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -8,14 +8,14 @@ import { useTranslation } from 'react-i18next'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
-import { radius, shadows, spacing } from '@/constants/design'
-
-const { width, height } = Dimensions.get('window')
+import { radius, shadows, spacing, getScreenPadding } from '@/constants/design'
 
 export default function WelcomeScreen() {
   const { t, i18n } = useTranslation()
   const { role } = useLocalSearchParams<{ role?: string }>()
   const isLender = role === 'LENDER'
+  const { width } = useWindowDimensions()
+  const horizontalPadding = getScreenPadding(width)
 
   // Animations
   const contentAnim = useRef(new Animated.Value(0)).current
@@ -44,7 +44,7 @@ export default function WelcomeScreen() {
           <View style={styles.overlay} />
       </View>
 
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { paddingHorizontal: horizontalPadding }]}>
         <View style={styles.topRow}>
           <TouchableOpacity
             style={styles.backBtn}
@@ -63,8 +63,9 @@ export default function WelcomeScreen() {
         <Animated.View style={[styles.hero, { opacity: logoAnim, transform: [{ scale: logoAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
             <View style={styles.logoCircle}>
                 <Image 
-                    source={{ uri: 'https://img.icons8.com/clouds/200/leaf.png' }} 
+                    source={require('../../assets/icon.png')} 
                     style={styles.logo}
+                    resizeMode="cover"
                 />
             </View>
             <Text style={styles.appName}>GramChain</Text>
@@ -82,7 +83,7 @@ export default function WelcomeScreen() {
                     onPress={() => router.push((isLender ? '/lender-signup' : '/signup') as any)}
                     size="xl"
                     variant="primary"
-                    style={[styles.mainBtn, isLender && { backgroundColor: '#1a56db' }]}
+                    style={[styles.mainBtn, isLender && { backgroundColor: colors.info[600] }]}
                 />
                 <TouchableOpacity 
                   style={styles.loginLink}
@@ -125,7 +126,6 @@ const styles = StyleSheet.create({
   },
   safe: {
     flex: 1,
-    paddingHorizontal: 30,
   },
   topRow: {
     flexDirection: 'row',
@@ -151,21 +151,23 @@ const styles = StyleSheet.create({
   },
   hero: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    paddingTop: 60,
   },
   logoCircle: {
-      width: 120,
-      height: 120,
-      borderRadius: 60,
+      width: 128,
+      height: 128,
+      borderRadius: 64,
       backgroundColor: colors.surface,
       justifyContent: 'center',
       alignItems: 'center',
+      overflow: 'hidden',
       ...shadows.lg,
   },
   logo: {
-      width: 80,
-      height: 80,
+      width: 128,
+      height: 128,
   },
   appName: {
       fontSize: 42,

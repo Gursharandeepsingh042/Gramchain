@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, Animated, TouchableOpacity,
-  Dimensions, RefreshControl, ActivityIndicator
+  Dimensions, RefreshControl, ActivityIndicator, Modal
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useAuthStore } from '@/store/auth.store'
-import { lenderApi } from '@/services/api'
+import { lenderApi, notificationApi } from '@/services/api'
 import { Skeleton } from '@/components/ui/SharedComponents'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
+import { Ionicons } from '@expo/vector-icons'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
@@ -34,6 +35,9 @@ export default function PortfolioScreen() {
   const [loading, setLoading] = useState(true)
   const [portfolio, setPortfolio] = useState(INITIAL_PORTFOLIO)
   const [recentLoans, setRecentLoans] = useState<any[]>([])
+  const [notifPanelVisible, setNotifPanel] = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
 
   // Animations
   const headerAnim = useRef(new Animated.Value(0)).current
@@ -57,9 +61,10 @@ export default function PortfolioScreen() {
 
   const fetchPortfolioData = useCallback(async () => {
     try {
-      const [portfolioRes, txRes] = await Promise.allSettled([
+      const [portfolioRes, txRes, notifRes] = await Promise.allSettled([
         lenderApi.getPortfolio(),
         lenderApi.getTransactions(),
+        notificationApi.getAll().catch(() => null),
       ])
 
       // Portfolio metrics
@@ -84,6 +89,12 @@ export default function PortfolioScreen() {
       } else {
         setRecentLoans([])
       }
+
+      // Notifications
+      if (notifRes && notifRes.status === 'fulfilled') {
+        setNotifications(notifRes.value?.data?.data?.items || [])
+        setUnreadCount(notifRes.value?.data?.data?.unreadCount || 0)
+      }
     } catch (e) {
       console.error('Portfolio fetch error:', e)
       setPortfolio(INITIAL_PORTFOLIO)
@@ -102,6 +113,18 @@ export default function PortfolioScreen() {
     setRefreshing(true)
     await fetchPortfolioData()
     setRefreshing(false)
+  }
+
+  const handleOpenNotif = () => {
+    setNotifPanel(true)
+  }
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationApi.markAllRead()
+      setUnreadCount(0)
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+    } catch (e) { /* non-fatal */ }
   }
 
   const userName = user?.name || 'Investor'
@@ -132,9 +155,13 @@ export default function PortfolioScreen() {
               <Text style={styles.userName}>{userName}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity style={styles.notifBtn}>
-              <Text style={styles.notifIcon}>🔔</Text>
-              <View style={styles.notifDot} />
+            <TouchableOpacity style={styles.notifBtn} onPress={handleOpenNotif}>
+              <Ionicons name="notifications-outline" size={22} color={colors.info[400]} />
+              {unreadCount > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
             </View>
           </Animated.View>
@@ -289,6 +316,46 @@ export default function PortfolioScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Notification Panel */}
+      <Modal
+        visible={notifPanelVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setNotifPanel(false)}
+      >
+        <SafeAreaView style={styles.notifPanel}>
+          <View style={styles.notifPanelHeader}>
+            <Text style={styles.notifPanelTitle}>Notifications</Text>
+            <TouchableOpacity onPress={() => setNotifPanel(false)} style={styles.notifCloseBtn}>
+              <Ionicons name="close" size={24} color={colors.info[400]} />
+            </TouchableOpacity>
+          </View>
+          {notifications.length > 0 && (
+            <TouchableOpacity onPress={handleMarkAllRead} style={styles.markAllReadBtn}>
+              <Text style={styles.markAllReadText}>Mark all as read</Text>
+            </TouchableOpacity>
+          )}
+          <ScrollView style={styles.notifScroll}>
+            {notifications.length === 0 ? (
+              <View style={styles.notifEmpty}>
+                <Text style={styles.notifEmptyEmoji}>📭</Text>
+                <Text style={styles.notifEmptyText}>No notifications yet</Text>
+              </View>
+            ) : (
+              notifications.map((notif: any) => (
+                <View key={notif.id} style={[styles.notifItem, !notif.isRead && styles.notifItemUnread]}>
+                  <View style={styles.notifItemContent}>
+                    <Text style={styles.notifItemTitle}>{notif.title || 'Notification'}</Text>
+                    <Text style={styles.notifItemBody}>{notif.message || notif.body}</Text>
+                    <Text style={styles.notifItemTime}>{new Date(notif.createdAt).toLocaleString()}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </View>
   )
 }
@@ -332,11 +399,25 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#1e293b',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
   },
   notifIcon: { fontSize: 18 },
+  notifBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notifBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   notifDot: {
     position: 'absolute',
     top: 10, right: 10,
@@ -345,6 +426,88 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
     borderWidth: 2,
     borderColor: '#1e293b',
+  },
+
+  // Notification Panel
+  notifPanel: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  notifPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  notifPanelTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#f1f5f9',
+  },
+  notifCloseBtn: {
+    padding: 8,
+  },
+  markAllReadBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  markAllReadText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#60a5fa',
+  },
+  notifScroll: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  notifEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 80,
+  },
+  notifEmptyEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  notifEmptyText: {
+    fontSize: 16,
+    color: '#94a3b8',
+  },
+  notifItem: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  notifItemUnread: {
+    backgroundColor: '#1e3a5f',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
+  notifItemContent: {
+    gap: 6,
+  },
+  notifItemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#f1f5f9',
+  },
+  notifItemBody: {
+    fontSize: 13,
+    color: '#cbd5e1',
+    lineHeight: 18,
+  },
+  notifItemTime: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 4,
   },
 
   // Hero

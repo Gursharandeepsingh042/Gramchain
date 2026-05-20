@@ -42,4 +42,7 @@ router.get('/:id/dissolve', SHGController.getDissolveStatus)
 /** @route POST /shg/join-by-code - Join by invite code */
 router.post('/join-by-code', SHGController.joinByInviteCode)
 
+/** @route DELETE /shg/:id - Delete SHG (leader only, sole member only) */
+router.delete('/:id', SHGController.deleteSHG)
+
 export default router

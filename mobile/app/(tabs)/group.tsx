@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Animated,
-  TouchableOpacity, Modal, TextInput, Alert, Share, FlatList
+  TouchableOpacity, Modal, TextInput, Alert, Share, FlatList, PanResponder
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
@@ -50,6 +50,11 @@ export default function GroupScreen() {
   const [dissolveStatuses, setDissolveStatuses] = useState<Record<string, any>>({})
   const [initiatingDissolve, setInitiatingDissolve] = useState(false)
   const [votingDissolve, setVotingDissolve] = useState<string | null>(null)
+  const [deletingGroup, setDeletingGroup] = useState<string | null>(null)
+
+  // Swipe to delete
+  const [deleteModeShgId, setDeleteModeShgId] = useState<string | null>(null)
+  const [swipeProgress, setSwipeProgress] = useState(0)
 
   // Animation
   const fadeAnim = useRef(new Animated.Value(0)).current
@@ -224,6 +229,31 @@ export default function GroupScreen() {
     }
   }
 
+  const handleDeleteGroup = (shg: any) => {
+    Alert.alert(
+      'Delete Group',
+      `You are the only member in "${shg.name}". Do you want to permanently delete this group? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            setDeletingGroup(shg.id)
+            try {
+              await shgApi.deleteGroup(shg.id)
+              Alert.alert('Deleted', 'Group has been permanently deleted.')
+              loadShgs()
+            } catch (e: any) {
+              Alert.alert('Error', e.response?.data?.error?.message || 'Failed to delete group.')
+            } finally {
+              setDeletingGroup(null)
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const handleGenerateInvite = async (shg: any) => {
     setSelectedShgForInvite(shg)
     setInviteCode('')
@@ -247,6 +277,75 @@ export default function GroupScreen() {
   const toggleExpand = (id: string) => {
     setExpandedShgId(prev => (prev === id ? null : id))
     if (expandedShgId !== id) loadDissolveStatus(id)
+  }
+
+  const handleLongPress = (shgId: string) => {
+    if (deleteModeShgId === shgId) {
+      setDeleteModeShgId(null)
+      setSwipeProgress(0)
+    } else {
+      setDeleteModeShgId(shgId)
+      setSwipeProgress(0)
+    }
+  }
+
+  const handleSwipeDelete = (shg: any, memberCount: number) => {
+    if (memberCount === 1) {
+      Alert.alert(
+        'Delete Group',
+        `You are the only member in "${shg.name}". Do you want to permanently delete this group? This action cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => { setDeleteModeShgId(null); setSwipeProgress(0) } },
+          {
+            text: 'Delete', style: 'destructive',
+            onPress: async () => {
+              setDeletingGroup(shg.id)
+              try {
+                await shgApi.deleteGroup(shg.id)
+                Alert.alert('Deleted', 'Group has been permanently deleted.')
+                setDeleteModeShgId(null)
+                setSwipeProgress(0)
+                loadShgs()
+              } catch (e: any) {
+                Alert.alert('Error', e.response?.data?.error?.message || 'Failed to delete group.')
+                setDeleteModeShgId(null)
+                setSwipeProgress(0)
+              } finally {
+                setDeletingGroup(null)
+              }
+            }
+          }
+        ]
+      )
+    } else {
+      Alert.alert(
+        'Request Group Dissolution',
+        `This will start a vote to permanently dissolve "${shg.name}". All members will be notified and must vote. This cannot be undone if majority votes YES.`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => { setDeleteModeShgId(null); setSwipeProgress(0) } },
+          {
+            text: 'Start Vote', style: 'destructive',
+            onPress: async () => {
+              setInitiatingDissolve(true)
+              try {
+                await shgApi.initiateDissolve(shg.id)
+                Alert.alert('Vote Started', 'Members have been notified to vote.')
+                setDeleteModeShgId(null)
+                setSwipeProgress(0)
+                loadShgs()
+                loadDissolveStatus(shg.id)
+              } catch (e: any) {
+                Alert.alert('Error', e.response?.data?.error?.message || 'Failed to start dissolution vote.')
+                setDeleteModeShgId(null)
+                setSwipeProgress(0)
+              } finally {
+                setInitiatingDissolve(false)
+              }
+            }
+          }
+        ]
+      )
+    }
   }
 
   const DropdownPicker = ({
@@ -348,16 +447,65 @@ export default function GroupScreen() {
             const memberCount = members.length
             const isLeader = members.some((m: any) => m.userId === user?.id && m.role === 'LEADER')
             const pendingLoans = (shg.loans || []).filter((l: any) => l.status === 'PENDING')
+            const isInDeleteMode = deleteModeShgId === shg.id
+
+            const panResponder = useRef(
+              PanResponder.create({
+                onStartShouldSetPanResponder: () => isInDeleteMode,
+                onMoveShouldSetPanResponder: () => isInDeleteMode,
+                onPanResponderMove: (_, gestureState) => {
+                  if (gestureState.dx > 0) {
+                    const progress = Math.min(gestureState.dx / 150, 1)
+                    setSwipeProgress(progress)
+                  }
+                },
+                onPanResponderRelease: (_, gestureState) => {
+                  if (gestureState.dx > 100) {
+                    handleSwipeDelete(shg, memberCount)
+                  } else {
+                    setSwipeProgress(0)
+                  }
+                },
+                onPanResponderTerminate: () => {
+                  setSwipeProgress(0)
+                },
+              })
+            ).current
 
             return (
               <View key={shg.id} style={[styles.accordionContainer, shadows.sm]}>
+                {isInDeleteMode && (
+                  <View style={styles.deleteOverlay}>
+                    <Animated.View
+                      style={[
+                        styles.deleteBin,
+                        {
+                          opacity: swipeProgress,
+                          transform: [{ scale: 0.8 + swipeProgress * 0.2 }]
+                        }
+                      ]}
+                    >
+                      <Ionicons name="trash" size={32} color={colors.danger[600]} />
+                    </Animated.View>
+                  </View>
+                )}
 
                 {/* ── Accordion Header (always visible) ── */}
-                <TouchableOpacity
-                  style={[styles.accordionHeader, isExpanded && styles.accordionHeaderExpanded]}
-                  onPress={() => toggleExpand(shg.id)}
-                  activeOpacity={0.85}
+                <View
+                  {...panResponder.panHandlers}
+                  style={[
+                    styles.accordionHeader,
+                    isExpanded && styles.accordionHeaderExpanded,
+                    isInDeleteMode && styles.accordionHeaderDeleteMode
+                  ]}
                 >
+                  <TouchableOpacity
+                    style={styles.headerTouchable}
+                    onPress={() => toggleExpand(shg.id)}
+                    onLongPress={() => handleLongPress(shg.id)}
+                    delayLongPress={500}
+                    activeOpacity={0.85}
+                  >
                   <View style={[styles.groupLogo, isExpanded && styles.groupLogoExpanded]}>
                     <Text style={styles.groupLogoText}>
                       {shg.name?.charAt(0)?.toUpperCase() || 'S'}
@@ -372,6 +520,22 @@ export default function GroupScreen() {
                     </Text>
                   </View>
                   <View style={styles.accordionMeta}>
+                    {isLeader && memberCount === 1 && (
+                      <TouchableOpacity
+                        style={styles.headerDeleteBtn}
+                        onPress={(e) => {
+                          e.stopPropagation()
+                          handleDeleteGroup(shg)
+                        }}
+                        disabled={deletingGroup === shg.id}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color={isExpanded ? '#fff' : colors.danger[500]}
+                        />
+                      </TouchableOpacity>
+                    )}
                     <Text style={[styles.accordionMemberCount, isExpanded && { color: 'rgba(255,255,255,0.8)' }]}>
                       {memberCount} members
                     </Text>
@@ -381,7 +545,8 @@ export default function GroupScreen() {
                       color={isExpanded ? '#fff' : colors.gray[400]}
                     />
                   </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
 
                 {/* ── Accordion Body ── */}
                 {isExpanded && (
@@ -462,18 +627,33 @@ export default function GroupScreen() {
                       return null
                     })()}
 
-                    {/* Leader: start dissolution */}
+                    {/* Leader: start dissolution OR delete if sole member */}
                     {isLeader && !dissolveStatuses[shg.id]?.voteInProgress && dissolveStatuses[shg.id]?.isActive && (
-                      <TouchableOpacity
-                        style={styles.dissolveBtn}
-                        onPress={() => handleInitiateDissolve(shg)}
-                        disabled={initiatingDissolve}
-                      >
-                        <Ionicons name="warning-outline" size={16} color={colors.danger[600]} />
-                        <Text style={styles.dissolveBtnText}>
-                          {initiatingDissolve ? 'Starting Vote…' : 'Request Group Dissolution'}
-                        </Text>
-                      </TouchableOpacity>
+                      <>
+                        {memberCount === 1 ? (
+                          <TouchableOpacity
+                            style={[styles.dissolveBtn, { backgroundColor: colors.danger[600] }]}
+                            onPress={() => handleDeleteGroup(shg)}
+                            disabled={deletingGroup === shg.id}
+                          >
+                            <Ionicons name="trash-outline" size={16} color="#fff" />
+                            <Text style={styles.dissolveBtnText}>
+                              {deletingGroup === shg.id ? 'Deleting...' : 'Delete Group'}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.dissolveBtn}
+                            onPress={() => handleInitiateDissolve(shg)}
+                            disabled={initiatingDissolve}
+                          >
+                            <Ionicons name="warning-outline" size={16} color={colors.danger[600]} />
+                            <Text style={styles.dissolveBtnText}>
+                              {initiatingDissolve ? 'Starting Vote…' : 'Request Group Dissolution'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
                     )}
 
                     {/* Leader: pending approvals */}
@@ -769,6 +949,38 @@ const styles = StyleSheet.create({
   accordionMeta: {
     alignItems: 'flex-end',
     gap: 4,
+  },
+  headerDeleteBtn: {
+    padding: 8,
+    borderRadius: radius.sm,
+  },
+  headerTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  accordionHeaderDeleteMode: {
+    backgroundColor: colors.danger[50],
+  },
+  deleteOverlay: {
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  deleteBin: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.danger[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.danger[400],
   },
   accordionMemberCount: {
     fontSize: 11,

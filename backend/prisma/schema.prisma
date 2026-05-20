@@ -73,6 +73,7 @@ enum NotificationType {
   LOAN_APPROVAL_REQUEST  // Member applied for loan — sent to group
   LOAN_APPROVED          // Leader approved a loan
   LOAN_REJECTED          // Leader rejected a loan
+  LOAN_OPPORTUNITY       // New loan opportunity for lenders
   MEMBER_REMOVED         // User was removed from group
   GROUP_INVITE           // Invited to join a group
   DISSOLUTION_VOTE       // Group leader started dissolution vote

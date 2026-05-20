@@ -65,6 +65,9 @@ router.post('/set-password', authenticate, AuthController.setPassword)
 /** @route GET /auth/check-phone */
 router.get('/check-phone', AuthController.checkPhone)
 
+/** @route GET /auth/check-email */
+router.get('/check-email', AuthController.checkEmail)
+
 /** @route POST /auth/firebase */
 router.post('/firebase', loginLimiter, AuthController.verifyFirebase)
 

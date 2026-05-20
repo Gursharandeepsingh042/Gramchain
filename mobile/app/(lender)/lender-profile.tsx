@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -16,23 +16,28 @@ import { radius, shadows } from '@/constants/design'
 export default function LenderProfileScreen() {
   const { user, logout } = useAuthStore()
 
+  const doLogout = async () => {
+    // N1: Server-side logout (FCM + refresh-token invalidation)
+    // before wiping local state. Network failure is non-fatal.
+    try { await authApi.logout() } catch { /* proceed with local logout */ }
+    logout()
+    router.replace('/role-select' as any)
+  }
+
   const handleLogout = () => {
+    // Alert.alert doesn't work on web — use window.confirm as fallback
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Are you sure you want to log out?')) {
+        doLogout()
+      }
+      return
+    }
     Alert.alert(
       'Logout',
       'Are you sure you want to log out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            // N1: Server-side logout (FCM + refresh-token invalidation)
-            // before wiping local state. Network failure is non-fatal.
-            try { await authApi.logout() } catch { /* proceed with local logout */ }
-            logout()
-            router.replace('/role-select' as any)
-          },
-        },
+        { text: 'Logout', style: 'destructive', onPress: doLogout },
       ]
     )
   }

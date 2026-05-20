@@ -90,7 +90,7 @@ export const Input = ({
         )}
         <TextInput
           style={[styles.input, prefix ? styles.inputWithPrefix : null]}
-          placeholderTextColor={colors.gray[400]}
+          placeholderTextColor={colors.gray[500]}
           value={value}
           onFocus={(e) => {
             setIsFocused(true)
@@ -207,7 +207,7 @@ export const AmountInput = ({ value, onChange, max, error }: AmountInputProps) =
           onChangeText={onChange}
           keyboardType="numeric"
           placeholder="10,000"
-          placeholderTextColor={colors.gray[300]}
+          placeholderTextColor={colors.gray[400]}
           selectionColor={colors.primary[500]}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   },
   clearText: {
     fontSize:  12,
-    color:     colors.gray[400],
+    color:     colors.gray[500],
   },
   suffix: {
     marginLeft: 8,

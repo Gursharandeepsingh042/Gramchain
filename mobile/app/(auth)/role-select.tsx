@@ -1,20 +1,20 @@
 import React, { useRef, useEffect } from 'react'
 import {
-  View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Image
+  View, Text, StyleSheet, Animated, TouchableOpacity, Image, useWindowDimensions
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/colors'
-import { radius, shadows, spacing } from '@/constants/design'
-
-const { width } = Dimensions.get('window')
+import { radius, shadows, spacing, getScreenPadding } from '@/constants/design'
 
 /**
  * Role Selection Screen — shown after splash.
  * User picks: "Continue as Borrower / SHG Member" or "Continue as Lender / Investor"
  */
 export default function RoleSelectScreen() {
+  const { width } = useWindowDimensions()
+  const horizontalPadding = getScreenPadding(width)
   const cardAnim1 = useRef(new Animated.Value(0)).current
   const cardAnim2 = useRef(new Animated.Value(0)).current
   const headerAnim = useRef(new Animated.Value(0)).current
@@ -51,13 +51,14 @@ export default function RoleSelectScreen() {
         <View style={styles.bgCircle3} />
       </View>
 
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { paddingHorizontal: horizontalPadding }]}>
         {/* Header */}
         <Animated.View style={[styles.header, makeAnim(headerAnim)]}>
           <View style={styles.logoCircle}>
             <Image
-              source={{ uri: 'https://img.icons8.com/clouds/200/leaf.png' }}
+              source={require('../../assets/icon.png')}
               style={styles.logo}
+              resizeMode="cover"
             />
           </View>
           <Text style={styles.appName}>GramChain</Text>
@@ -99,7 +100,7 @@ export default function RoleSelectScreen() {
               activeOpacity={0.85}
               accessibilityLabel="Continue as Lender or Investor"
             >
-              <View style={[styles.cardIconCircle, { backgroundColor: '#FEF3C7' }]}>
+              <View style={[styles.cardIconCircle, { backgroundColor: colors.secondary[100] }]}>
                 <Text style={styles.cardEmoji}>💎</Text>
               </View>
               <View style={styles.cardContent}>
@@ -148,7 +149,7 @@ const styles = StyleSheet.create({
   },
   bgGradient: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0a3d1e',
+    backgroundColor: colors.primary[900],
   },
   bgCircle1: {
     position: 'absolute',
@@ -179,7 +180,6 @@ const styles = StyleSheet.create({
   },
   safe: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   header: {
     alignItems: 'center',
@@ -187,17 +187,18 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logoCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
     ...shadows.lg,
   },
   logo: {
-    width: 60,
-    height: 60,
+    width: 96,
+    height: 96,
   },
   appName: {
     fontSize: 36,

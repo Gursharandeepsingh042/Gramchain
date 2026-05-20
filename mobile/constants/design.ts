@@ -178,3 +178,25 @@ export const hitSlop = {
   md:  { top: 12, bottom: 12, left: 12, right: 12 },
   lg:  { top: 16, bottom: 16, left: 16, right: 16 },
 } as const
+
+// ─── Responsive Layout Helpers ───────────────────────────────────
+// Breakpoints (matches Tailwind's md/lg roughly)
+export const breakpoints = {
+  tablet: 768,
+  desktop: 1024,
+} as const
+
+/**
+ * Returns the standard horizontal screen padding for a given width.
+ * Phone: 24, Tablet: 32, Desktop: 48.
+ * Use everywhere instead of hand-rolling per-screen rules.
+ */
+export const getScreenPadding = (width: number): number => {
+  if (width >= breakpoints.desktop) return 48
+  if (width >= breakpoints.tablet)  return 32
+  return 24
+}
+
+/** Max width for centered form / content cards on wide screens. */
+export const FORM_MAX_WIDTH = 560
+

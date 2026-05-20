@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   View, Text, StyleSheet,
-  TouchableOpacity, ScrollView, Animated, Alert
+  TouchableOpacity, ScrollView, Animated, Alert, KeyboardAvoidingView, Platform, useWindowDimensions, Image
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -18,8 +18,9 @@ import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
-import { radius, shadows } from '@/constants/design'
+import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 WebBrowser.maybeCompleteAuthSession()
 
@@ -31,8 +32,16 @@ export default function LenderLoginScreen() {
   const { setAuth } = useAuthStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const insets = useSafeAreaInsets()
+  const { width, height } = useWindowDimensions()
+  const styles = useMemo(
+    () => createStyles({ width, height, topInset: insets.top, bottomInset: insets.bottom }),
+    [width, height, insets.bottom, insets.top],
+  )
 
   // Animations
   const headerAnim = React.useRef(new Animated.Value(0)).current
@@ -52,10 +61,10 @@ export default function LenderLoginScreen() {
     : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // Provide Web client ID as default clientId for Expo Go; native builds use platform-specific IDs.
+    // Expo Go: only send the Web client. Native builds: send platform IDs.
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     redirectUri,
   })
@@ -97,6 +106,15 @@ export default function LenderLoginScreen() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleGooglePress = () => {
+    if (!request) {
+      setError('Google sign-in is still preparing. Please try again shortly.')
+      return
+    }
+    setError('')
+    promptAsync().catch(() => setError('Google sign-in was cancelled.'))
   }
 
   const handleDemoLogin = () => {
@@ -156,6 +174,11 @@ export default function LenderLoginScreen() {
       </View>
 
       <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          style={styles.keyboard}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
         {/* Back button */}
         <TouchableOpacity
           style={styles.backBtn}
@@ -164,12 +187,20 @@ export default function LenderLoginScreen() {
           <Ionicons name="chevron-back" size={24} color="rgba(255,255,255,0.8)" />
         </TouchableOpacity>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
           {/* Header */}
           <Animated.View style={[styles.header, {
             opacity: headerAnim,
             transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
           }]}>
+            <View style={styles.logoContainer}>
+              <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="cover" />
+            </View>
             <View style={styles.lenderBadge}>
               <Text style={styles.lenderBadgeIcon}>💎</Text>
               <Text style={styles.lenderBadgeText}>INVESTOR PORTAL</Text>
@@ -200,8 +231,13 @@ export default function LenderLoginScreen() {
                 placeholder="Enter your password"
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 icon={<Ionicons name="lock-closed-outline" size={20} color={colors.gray[400]} />}
+                rightIcon={
+                  <TouchableOpacity onPress={() => setShowPassword(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Ionicons name={showPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color={colors.gray[400]} />
+                  </TouchableOpacity>
+                }
               />
               <TouchableOpacity
                 style={styles.forgotPass}
@@ -230,7 +266,7 @@ export default function LenderLoginScreen() {
 
             <Button
               label="Login with Google"
-              onPress={() => promptAsync()}
+              onPress={handleGooglePress}
               variant="outline"
               icon={<GoogleLogo size={20} />}
               size="xl"
@@ -272,203 +308,258 @@ export default function LenderLoginScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   )
 }
+type StyleParams = {
+  width: number
+  height: number
+  topInset: number
+  bottomInset: number
+}
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0c1a2e',
-  },
-  bgWrapper: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  accentCircle1: {
-    position: 'absolute',
-    top: -50,
-    right: -50,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(59,130,246,0.08)',
-  },
-  accentCircle2: {
-    position: 'absolute',
-    bottom: 100,
-    left: -60,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(245,158,11,0.05)',
-  },
-  safe: {
-    flex: 1,
-  },
-  backBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    alignSelf: 'flex-start',
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
-  header: {
-    paddingTop: 10,
-    marginBottom: 30,
-  },
-  lenderBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(245,158,11,0.12)',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-    gap: 6,
-  },
-  lenderBadgeIcon: {
-    fontSize: 14,
-  },
-  lenderBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.secondary[400],
-    letterSpacing: 1,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: colors.surface,
-    lineHeight: 40,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 10,
-    lineHeight: 22,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 28,
-    padding: 28,
-    ...shadows.xl,
-  },
-  inputGroup: {
-    gap: 12,
-  },
-  forgotPass: {
-    alignSelf: 'flex-end',
-    marginTop: -4,
-  },
-  forgotPassText: {
-    color: colors.secondary[600],
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  loginBtn: {
-    marginTop: 24,
-    borderRadius: radius.pill,
-    height: 56,
-    backgroundColor: '#1a56db',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 22,
-  },
-  line: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.gray[200],
-  },
-  dividerText: {
-    marginHorizontal: 15,
-    color: colors.gray[500],
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  googleBtn: {
-    borderRadius: radius.pill,
-    height: 56,
-    borderColor: colors.gray[200],
-  },
-  yieldBanner: {
-    marginTop: 22,
-    backgroundColor: colors.primary[50],
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.primary[100],
-  },
-  yieldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  yieldItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  yieldValue: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.primary[700],
-  },
-  yieldLabel: {
-    fontSize: 11,
-    color: colors.text.secondary,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  yieldDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: colors.primary[200],
-  },
-  errorText: {
-    color: colors.danger[500],
-    textAlign: 'center',
-    marginTop: 10,
-    fontSize: 14,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-    paddingBottom: 20,
-  },
-  footerText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 15,
-  },
-  registerText: {
-    color: colors.secondary[400],
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  demoBtn: {
-    marginTop: 16,
-    backgroundColor: '#172554',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1e40af',
-  },
-  demoBtnText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#60a5fa',
-    letterSpacing: 0.5,
-  },
-  demoBtnSub: {
-    fontSize: 11,
-    color: '#94a3b8',
-    marginTop: 4,
-  },
-})
+const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => {
+  const isTablet = width >= 768
+  const horizontalPadding = getScreenPadding(width)
+  const cardRadius = isTablet ? 32 : 28
+  const cardPadding = isTablet ? 32 : 24
+  const formMaxWidth = isTablet ? FORM_MAX_WIDTH : undefined
+  const contentGap = isTablet ? 28 : 22
+  const footerPadding = bottomInset + (isTablet ? 38 : 26)
+  const formMinHeight = Math.max(height * (isTablet ? 0.5 : 0.62), isTablet ? 520 : 560)
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.backgroundDark,
+    },
+    bgWrapper: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    accentCircle1: {
+      position: 'absolute',
+      top: -60,
+      right: -60,
+      width: isTablet ? 240 : 200,
+      height: isTablet ? 240 : 200,
+      borderRadius: isTablet ? 120 : 100,
+      backgroundColor: 'rgba(59,130,246,0.08)',
+    },
+    accentCircle2: {
+      position: 'absolute',
+      bottom: isTablet ? 120 : 100,
+      left: -60,
+      width: isTablet ? 220 : 180,
+      height: isTablet ? 220 : 180,
+      borderRadius: isTablet ? 110 : 90,
+      backgroundColor: 'rgba(245,158,11,0.05)',
+    },
+    safe: {
+      flex: 1,
+    },
+    keyboard: {
+      flex: 1,
+    },
+    backBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      alignSelf: 'flex-start',
+      marginTop: 8,
+      marginLeft: horizontalPadding,
+      borderRadius: radius.pill,
+      backgroundColor: 'rgba(255,255,255,0.07)',
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: horizontalPadding,
+      paddingBottom: footerPadding,
+      paddingTop: 16,
+    },
+    header: {
+      paddingTop: 4,
+      marginBottom: 8,
+      gap: 16,
+      alignItems: 'center',
+      maxWidth: formMaxWidth,
+      width: '100%',
+      alignSelf: 'center',
+    },
+    logoContainer: {
+      width: isTablet ? 96 : 96,
+      height: isTablet ? 96 : 96,
+      borderRadius: isTablet ? 48 : 48,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.15)',
+    },
+    logo: {
+      width: isTablet ? 96 : 96,
+      height: isTablet ? 96 : 96,
+    },
+    lenderBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: 'rgba(245,158,11,0.12)',
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      gap: 6,
+    },
+    lenderBadgeIcon: {
+      fontSize: 14,
+    },
+    lenderBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.secondary[400],
+      letterSpacing: 1,
+    },
+    title: {
+      fontSize: isTablet ? 34 : 32,
+      fontWeight: '900',
+      color: colors.surface,
+      lineHeight: isTablet ? 44 : 40,
+      letterSpacing: -0.4,
+    },
+    subtitle: {
+      fontSize: isTablet ? 16 : 15,
+      color: 'rgba(255,255,255,0.6)',
+      lineHeight: isTablet ? 24 : 22,
+      maxWidth: isTablet ? 500 : undefined,
+    },
+    formCard: {
+      backgroundColor: colors.surface,
+      borderRadius: cardRadius,
+      paddingHorizontal: cardPadding,
+      paddingVertical: cardPadding,
+      ...shadows.xl,
+      width: '100%',
+      alignSelf: 'center',
+      maxWidth: formMaxWidth,
+      minHeight: formMinHeight,
+      gap: 20,
+    },
+    inputGroup: {
+      gap: isTablet ? 16 : 12,
+    },
+    forgotPass: {
+      alignSelf: 'flex-end',
+      marginTop: -4,
+    },
+    forgotPassText: {
+      color: colors.secondary[600],
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '600',
+    },
+    loginBtn: {
+      marginTop: 16,
+      borderRadius: radius.pill,
+      height: 56,
+      backgroundColor: colors.info[600],
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: isTablet ? 26 : 22,
+      gap: 12,
+    },
+    line: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.gray[200],
+    },
+    dividerText: {
+      color: colors.gray[500],
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
+      letterSpacing: 1,
+    },
+    googleBtn: {
+      borderRadius: radius.pill,
+      height: 56,
+      borderColor: colors.gray[200],
+    },
+    yieldBanner: {
+      marginTop: 20,
+      backgroundColor: colors.primary[50],
+      borderRadius: 16,
+      padding: isTablet ? 20 : 16,
+      borderWidth: 1,
+      borderColor: colors.primary[100],
+    },
+    yieldRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 12,
+    },
+    yieldItem: {
+      flex: 1,
+      alignItems: 'center',
+      gap: 4,
+    },
+    yieldValue: {
+      fontSize: isTablet ? 22 : 20,
+      fontWeight: '900',
+      color: colors.primary[700],
+    },
+    yieldLabel: {
+      fontSize: isTablet ? 12 : 11,
+      color: colors.text.secondary,
+      fontWeight: '600',
+    },
+    yieldDivider: {
+      width: 1,
+      height: 32,
+      backgroundColor: colors.primary[200],
+    },
+    errorText: {
+      color: colors.danger[500],
+      textAlign: 'center',
+      marginTop: 6,
+      fontSize: isTablet ? 15 : 14,
+    },
+    footer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 20,
+      gap: 6,
+    },
+    footerText: {
+      color: 'rgba(255,255,255,0.6)',
+      fontSize: isTablet ? 16 : 15,
+    },
+    registerText: {
+      color: colors.secondary[400],
+      fontSize: isTablet ? 16 : 15,
+      fontWeight: '800',
+    },
+    demoBtn: {
+      marginTop: 16,
+      backgroundColor: '#172554',
+      borderRadius: 16,
+      paddingVertical: 16,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: '#1e40af',
+      gap: 6,
+    },
+    demoBtnText: {
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: '800',
+      color: '#60a5fa',
+      letterSpacing: 0.5,
+    },
+    demoBtnSub: {
+      fontSize: isTablet ? 12 : 11,
+      color: '#94a3b8',
+    },
+  })
+}

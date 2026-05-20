@@ -138,12 +138,12 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       loadData()
     } else {
       setLoading(false)
     }
-  }, [user])
+  }, [user?.id]) // use stable primitive, not object reference
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -160,9 +160,6 @@ export default function Dashboard() {
     }
   }
 
-  // Time-based greeting
-  const hour     = new Date().getHours()
-  const greeting = hour < 12 ? 'सुप्रभात' : hour < 17 ? 'नमस्ते' : 'शुभ संध्या'
   const userName = user?.name || user?.phone || 'User'
 
   return (
@@ -183,7 +180,7 @@ export default function Dashboard() {
         <Animated.View style={[styles.headerRow, makeAnimStyle(greetAnim)]}>
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>
-              {greeting} 🙏
+              {t('dashboard.greeting')}
             </Text>
             <Text style={styles.userName}>{userName}</Text>
           </View>

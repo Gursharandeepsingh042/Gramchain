@@ -219,6 +219,25 @@ export const checkPhone = async (req: Request, res: Response, next: NextFunction
 }
 
 /**
+ * GET /auth/check-email?email=xxx@xxx.com
+ * Returns { exists: boolean } — used by forgot-password screen
+ */
+export const checkEmail = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { email } = req.query as { email?: string }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      sendError(res, 'INVALID_EMAIL', 'Please provide a valid email address')
+      return
+    }
+    const { prisma } = await import('@/lib/prisma')
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } })
+    sendSuccess(res, { exists: !!user })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
  * POST /auth/firebase
  * Body: { idToken: string, name?: string, groupCode?: string }
  */

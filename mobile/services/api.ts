@@ -98,20 +98,20 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
-  // NOTE: /auth/send-otp and /auth/verify-otp are deprecated on the backend (returns 410
-  // unless DEMO_MODE). Real OTP delivery is handled by Firebase Phone Auth on the client;
-  // verification goes through /auth/firebase below.
   loginWithPassword: (identifier: string, password: string) => api.post('/auth/login', { identifier, password }),
-  register: (data: { phone: string; name: string; email: string; password?: string }) => 
+  register: (data: { phone: string; name: string; email: string; password?: string }) =>
     api.post('/auth/register', data),
   googleSignIn: (idToken: string) => api.post('/auth/google', { idToken }),
   verifyFirebase: (idToken: string, name?: string, groupCode?: string, password?: string, role?: 'BORROWER' | 'LENDER') =>
     api.post('/auth/firebase', { idToken, name, groupCode, password, role }),
   checkPhone: (phone: string) => api.get<{ data: { exists: boolean; hasName: boolean } }>(`/auth/check-phone?phone=${phone}`),
+  checkEmail: (email: string) => api.get<{ data: { exists: boolean } }>(`/auth/check-email?email=${encodeURIComponent(email)}`),
   setPassword: (password: string) => api.post('/auth/set-password', { password }),
   getMe: () => api.get('/auth/me'),
   /** N1: Server-side logout — invalidates refresh tokens & clears FCM token. */
   logout: () => api.post('/auth/logout'),
+  // TODO: Backend endpoint not implemented yet - uncomment when backend adds /user/profile PATCH endpoint
+  // updateProfile: (data: { name?: string; walletAddress?: string }) => api.patch('/user/profile', data),
 }
 
 export const loanApi = {
@@ -144,6 +144,7 @@ export const shgApi = {
   joinByCode: (inviteCode: string) => api.post('/shg/join-by-code', { inviteCode }),
   generateInvite: (shgId: string) => api.post(`/shg/${shgId}/invite`),
   removeMember:     (shgId: string, userId: string) => api.delete(`/shg/${shgId}/members/${userId}`),
+  deleteGroup:      (shgId: string) => api.delete(`/shg/${shgId}`),
   initiateDissolve: (shgId: string) => api.post(`/shg/${shgId}/dissolve`),
   voteDissolve:     (shgId: string, vote: boolean) => api.post(`/shg/${shgId}/dissolve/vote`, { vote }),
   getDissolveStatus:(shgId: string) => api.get(`/shg/${shgId}/dissolve`),

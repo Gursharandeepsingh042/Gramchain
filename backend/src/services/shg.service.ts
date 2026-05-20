@@ -494,3 +494,42 @@ export const joinSHGByInviteCode = async (userId: string, inviteCode: string) =>
 
   return newMember
 }
+
+/**
+ * Delete an SHG group — leader only, must be sole member
+ */
+export const deleteSHG = async (shgId: string, requesterId: string) => {
+  const membership = await prisma.sHGMember.findUnique({
+    where: { userId_shgId: { userId: requesterId, shgId } },
+    include: { shg: true }
+  })
+  if (!membership) {
+    throw new AppError(404, 'NOT_MEMBER', 'You are not a member of this group')
+  }
+  if (membership.role !== 'LEADER') {
+    throw new AppError(403, 'NOT_LEADER', 'Only the group leader can delete the group')
+  }
+
+  // Check if requester is the only member
+  const memberCount = await prisma.sHGMember.count({ where: { shgId } })
+  if (memberCount > 1) {
+    throw new AppError(400, 'NOT_SOLE_MEMBER', 'Cannot delete group with multiple members. Use dissolution vote instead.')
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Delete dissolution votes
+    await tx.dissolutionVote.deleteMany({ where: { shgId } })
+    // Delete meetings
+    await tx.meeting.deleteMany({ where: { shgId } })
+    // Delete members
+    await tx.sHGMember.deleteMany({ where: { shgId } })
+    // Delete the group
+    await tx.sHGGroup.delete({ where: { id: shgId } })
+  })
+
+  // Invalidate cache
+  const redis = await getRedis()
+  if (redis) await redis.del(`shg:${shgId}`)
+
+  return { message: 'Group deleted successfully' }
+}

@@ -10,6 +10,7 @@ type NotificationType =
   | 'LOAN_APPROVAL_REQUEST'
   | 'LOAN_APPROVED'
   | 'LOAN_REJECTED'
+  | 'LOAN_OPPORTUNITY'
   | 'MEMBER_REMOVED'
   | 'GROUP_INVITE'
   | 'DISSOLUTION_VOTE'
@@ -180,6 +181,22 @@ export const notifyUsers = async (
   data?: Record<string, any>
 ) => {
   await Promise.all(userIds.map(uid => notify(uid, type, title, body, data as Record<string, string>)))
+}
+
+/**
+ * Fan-out: notify all lenders (users with LENDER role)
+ */
+export const notifyLenders = async (
+  type: NotificationType,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+) => {
+  const lenders = await prisma.user.findMany({
+    where: { role: 'LENDER' },
+    select: { id: true }
+  })
+  await Promise.all(lenders.map(l => notify(l.id, type, title, body, data)))
 }
 
 /**

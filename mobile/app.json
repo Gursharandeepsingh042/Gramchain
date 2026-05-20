@@ -59,7 +59,7 @@
             "googleServicesFile": "./google-services.json"
           },
           "ios": {
-          "googleServicesFile": "./GoogleService-Info.plist"
+            "googleServicesFile": "./GoogleService-Info.plist"
           }
         }
       ],

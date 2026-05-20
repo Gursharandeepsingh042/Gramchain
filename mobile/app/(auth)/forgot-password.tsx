@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, ScrollView
+  TouchableOpacity, ScrollView, useWindowDimensions, Animated
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -10,64 +10,44 @@ import { authApi } from '@/services/api'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
-import { radius, shadows } from '@/constants/design'
-import { GoogleLogo } from '@/components/ui/GoogleLogo'
+import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useStaggeredFadeIn, makeFadeStyle } from '@/hooks/useStaggeredFadeIn'
 
-type RecoveryStep = 1 | 2 | 3
+type RecoveryStep = 1 | 2
 
 export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<RecoveryStep>(1)
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState('')
-  const [otp, setOtp] = useState('')
-  const [newPassword, setNewPassword] = useState('')
   const [error, setError] = useState('')
 
+  const insets = useSafeAreaInsets()
+  const { width, height } = useWindowDimensions()
+  const isTablet = width >= 768
+  const horizontalPadding = getScreenPadding(width)
+  const minFormHeight = Math.max(height * (isTablet ? 0.5 : 0.62), isTablet ? 520 : 560)
+  const formMaxWidth = isTablet ? FORM_MAX_WIDTH : undefined
+
+  const [headerAnim, cardAnim] = useStaggeredFadeIn({ count: 2, resetKey: step })
+
   const handleIdentifierSubmit = async () => {
-    if (!email || !email.includes('@')) {
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setError('Please enter a valid email address')
       return
     }
     setLoading(true)
     setError('')
     try {
-      // In a real app, you'd check if the user exists first.
-      // For now, we go straight to verification options.
-      setStep(2)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleRecoveryOption = async (method: 'google' | 'otp') => {
-    if (method === 'google') {
-      // Logic for Google verification
-      setStep(3)
-    } else {
-      setLoading(true)
-      try {
-        // Simulate sending recovery email
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        setStep(3)
-      } catch (err: any) {
-        setError('Failed to send recovery email')
-      } finally {
-        setLoading(false)
+      const res = await authApi.checkEmail(trimmed)
+      if (res.data.data.exists) {
+        setStep(2)
+      } else {
+        setError('Account does not exist. Please check your email or sign up.')
       }
-    }
-  }
-
-  const handleResetPassword = async () => {
-    if (newPassword.length < 8) {
-        setError('Password must be at least 8 characters')
-        return
-    }
-    setLoading(true)
-    try {
-      // Call reset endpoint (to be implemented on backend)
-      router.replace('/login')
     } catch (err: any) {
-      setError('Failed to reset password')
+      setError(err.response?.data?.error?.message || 'Unable to verify account. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -75,105 +55,97 @@ export default function ForgotPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => step === 1 ? router.back() : setStep(step - 1 as RecoveryStep)} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={colors.surface} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Account Recovery</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + (isTablet ? 40 : 28) }
+          ]}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <Animated.View style={[
+            styles.header, 
+            { paddingHorizontal: horizontalPadding, maxWidth: formMaxWidth, alignSelf: 'center', width: '100%' },
+            makeFadeStyle(headerAnim)
+          ]}>
+            <TouchableOpacity onPress={() => step === 1 ? router.back() : setStep(1)} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color={colors.surface} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Account Recovery</Text>
+            <View style={{ width: 40 }} />
+          </Animated.View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.formCard}>
+          <Animated.View style={[
+            styles.formCard,
+            {
+              paddingHorizontal: horizontalPadding + 6,
+              maxWidth: formMaxWidth,
+              minHeight: minFormHeight,
+              alignSelf: 'center',
+              width: '100%',
+            },
+            makeFadeStyle(cardAnim, 32),
+          ]}>
             {step === 1 && (
-                <View style={styles.inputGroup}>
-                    <Text style={styles.title}>Forgot Password?</Text>
-                    <Text style={styles.subtitle}>Enter your email address to find your account.</Text>
-                    
-                    <Input
-                        label="Email Address"
-                        placeholder="example@mail.com"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        icon={<Ionicons name="mail-outline" size={20} color={colors.gray[400]} />}
-                    />
-                    
-                    {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              <View style={styles.inputGroup}>
+                <Text style={styles.title}>Forgot Password?</Text>
+                <Text style={styles.subtitle}>Enter your email address and we will check if your account exists.</Text>
 
-                    <Button
-                        label="FIND ACCOUNT"
-                        onPress={handleIdentifierSubmit}
-                        loading={loading}
-                        size="xl"
-                        variant="primary"
-                        style={styles.actionBtn}
-                    />
-                </View>
+                <Input
+                  label="Email Address"
+                  placeholder="example@mail.com"
+                  value={email}
+                  onChangeText={(t) => { setEmail(t); setError('') }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  icon={<Ionicons name="mail-outline" size={20} color={colors.gray[400]} />}
+                />
+
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+                <Button
+                  label="FIND ACCOUNT"
+                  onPress={handleIdentifierSubmit}
+                  loading={loading}
+                  size="xl"
+                  variant="primary"
+                  style={styles.actionBtn}
+                />
+              </View>
             )}
 
             {step === 2 && (
-                <View style={styles.inputGroup}>
-                    <Text style={styles.title}>Verify Identity</Text>
-                    <Text style={styles.subtitle}>Choose how you want to receive a code to reset your password.</Text>
-                    
-                    <TouchableOpacity 
-                        style={styles.optionCard}
-                        onPress={() => handleRecoveryOption('google')}
-                    >
-                        <View style={styles.optionIcon}>
-                            <GoogleLogo size={24} />
-                        </View>
-                        <View style={styles.optionText}>
-                            <Text style={styles.optionTitle}>Use Google / Gmail</Text>
-                            <Text style={styles.optionDesc}>Quickest & Most Secure (Recommended)</Text>
-                        </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                        style={styles.optionCard}
-                        onPress={() => handleRecoveryOption('otp')}
-                    >
-                        <View style={[styles.optionIcon, { backgroundColor: colors.primary[50] }]}>
-                            <Ionicons name="mail-outline" size={24} color={colors.primary[600]} />
-                        </View>
-                        <View style={styles.optionText}>
-                            <Text style={styles.optionTitle}>Send Recovery Email</Text>
-                            <Text style={styles.optionDesc}>Receive recovery settings on {email}</Text>
-                        </View>
-                    </TouchableOpacity>
+              <View style={styles.inputGroup}>
+                <View style={styles.successIcon}>
+                  <Ionicons name="mail-outline" size={48} color={colors.primary[600]} />
                 </View>
+                <Text style={styles.title}>Check Your Email</Text>
+                <Text style={styles.subtitle}>
+                  If an account exists for{' '}
+                  <Text style={styles.emailHighlight}>{email}</Text>,
+                  {'\n'}a password reset link has been sent.
+                </Text>
+                <Text style={styles.hintText}>
+                  Didn't receive it? Check your spam folder or try again in a few minutes.
+                </Text>
+
+                <Button
+                  label="BACK TO LOGIN"
+                  onPress={() => router.replace('/login')}
+                  size="xl"
+                  variant="outline"
+                  style={styles.actionBtn}
+                />
+              </View>
             )}
-
-            {step === 3 && (
-                <View style={styles.inputGroup}>
-                    <Text style={styles.title}>Create New Password</Text>
-                    <Text style={styles.subtitle}>Set a strong password to protect your account.</Text>
-                    
-                    <Input
-                        label="New Password"
-                        placeholder="Minimum 8 characters"
-                        value={newPassword}
-                        onChangeText={setNewPassword}
-                        secureTextEntry
-                        icon={<Ionicons name="lock-closed-outline" size={20} color={colors.gray[400]} />}
-                    />
-
-                    {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-                    <Button
-                        label="RESET PASSWORD"
-                        onPress={handleResetPassword}
-                        loading={loading}
-                        size="xl"
-                        variant="primary"
-                        style={styles.actionBtn}
-                    />
-                </View>
-            )}
-        </View>
-      </ScrollView>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
@@ -187,8 +159,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
   backBtn: {
     padding: 8,
@@ -198,6 +170,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.surface,
   },
+  keyboard: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
   },
@@ -205,14 +180,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: 40,
     borderTopRightRadius: 40,
-    padding: 30,
-    flex: 1,
-    marginTop: 20,
+    paddingVertical: 30,
+    marginTop: 16,
     ...shadows.lg,
   },
   inputGroup: {
     marginTop: 10,
     gap: 15,
+    alignItems: 'center',
   },
   title: {
     fontSize: 24,
@@ -231,37 +206,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     height: 56,
   },
-  optionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[50],
-    padding: 20,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    gap: 15,
-  },
-  optionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.surface,
+  successIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primary[50],
     justifyContent: 'center',
     alignItems: 'center',
-    ...shadows.sm,
+    marginBottom: 10,
   },
-  optionText: {
-    flex: 1,
+  emailHighlight: {
+    fontWeight: '800',
+    color: colors.primary[800],
   },
-  optionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.gray[800],
-  },
-  optionDesc: {
+  hintText: {
     fontSize: 13,
     color: colors.gray[500],
-    marginTop: 2,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   errorText: {
     color: colors.danger[500],

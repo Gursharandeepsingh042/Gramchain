@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState } from 'react'
 import {
-  View, Text, StyleSheet, Animated, ScrollView,
+  View, Text, StyleSheet, Animated, ScrollView, TouchableOpacity, useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { TrustBadge } from '@/components/ui/SharedComponents'
@@ -11,13 +12,13 @@ import { useAuthStore } from '@/store/auth.store'
 import { kycApi } from '@/services/api'
 import { router } from 'expo-router'
 import { colors } from '@/constants/colors'
-import { radius, shadows, spacing } from '@/constants/design'
+import { radius, shadows, spacing, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 
 type KycStep = 'PAN' | 'AADHAAR' | 'OTP' | 'PROFILE'
 
 export default function KycScreen() {
   const { t } = useTranslation()
-  const { completeKyc } = useAuthStore()
+  const { completeKyc, skipKyc, logout } = useAuthStore()
   
   const [step, setStep] = useState<KycStep>('AADHAAR')
   const [loading, setLoading] = useState(false)
@@ -39,16 +40,24 @@ export default function KycScreen() {
     occupation: ''
   })
 
+  // Responsive layout
+  const { width } = useWindowDimensions()
+  const isTablet = width >= 768
+  const horizontalPadding = getScreenPadding(width)
+
   // Animations
   const fadeAnim  = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.95)).current
 
   useEffect(() => {
+    // Reset before re-running so step changes re-animate predictably
+    fadeAnim.setValue(0)
+    scaleAnim.setValue(0.95)
     Animated.parallel([
       Animated.timing(fadeAnim,  { toValue: 1,  duration: 500, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1,  friction: 8,   useNativeDriver: true }),
     ]).start()
-  }, [step]) // trigger animation on step change too
+  }, [step])
 
   const handleVerifyPan = async () => {
     if (pan.length !== 10) {
@@ -105,18 +114,29 @@ export default function KycScreen() {
     
     try {
       const res = await kycApi.verifyAadhaarOtp(referenceId, otp, aadhaar)
-      const details = res.data.data.details
+      
+      // Validate response structure
+      if (!res.data?.data) {
+        throw new Error('Invalid response from Aadhaar verification service')
+      }
+      
+      const details = res.data.data.details || {}
+      const user = res.data.data.user || {}
+      
       setProfile({
         ...profile,
-        name: res.data.data.user.name || '', // Got name from updated user record
+        name: user.name || '',
         dob: details.dob || '',
         gender: details.gender || '',
         address: details.address || ''
       })
+      // Clear error on success
+      setError('')
       // Aadhaar done, now verify PAN
       setStep('PAN')
     } catch (e: any) {
-      setError(e.response?.data?.error?.message || 'Invalid Aadhaar OTP.')
+      console.error('Aadhaar OTP verification error:', e)
+      setError(e.response?.data?.error?.message || e.message || 'Invalid Aadhaar OTP.')
     } finally {
       setLoading(false)
     }
@@ -152,15 +172,40 @@ export default function KycScreen() {
     }
   }
 
-  const handleSkipKyc = async () => {
-    // Navigate to main app with KYC pending status
-    router.replace('/')
+  const handleSkipKyc = () => {
+    // Skip → straight to borrower dashboard. Persist the skip so we never
+    // route back to KYC for this user.
+    skipKyc()
+    router.replace('/(tabs)' as any)
+  }
+
+  const handleBack = () => {
+    // Back → go to the previous screen (login/signup). Simple.
+    router.back()
   }
 
   return (
     <SafeAreaView style={styles.safe}>
+      <View style={[styles.topBar, { paddingHorizontal: horizontalPadding }]}>
+        <TouchableOpacity
+          onPress={handleBack}
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityLabel="Go back to login"
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
+        </TouchableOpacity>
+      </View>
       <Animated.ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingHorizontal: horizontalPadding,
+            maxWidth: isTablet ? FORM_MAX_WIDTH + 64 : undefined,
+            alignSelf: 'center',
+            width: '100%',
+          },
+        ]}
         style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }}
         keyboardShouldPersistTaps="handled"
       >
@@ -367,9 +412,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
   },
+  topBar: {
+    height: 48,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+  },
+  logoutLink: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  logoutText: {
+    color: colors.danger[500],
+    fontWeight: '600',
+    fontSize: 14,
+  },
   scroll: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: 20,
+    paddingTop: 8,
     paddingBottom: 40,
   },
   iconRow: {
