@@ -20,6 +20,10 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, Record<'en' | 'hi'
     en: () => ({ title: 'Loan Rejected', body: 'Your loan request was rejected by the group leader.' }),
     hi: () => ({ title: 'ऋण अस्वीकृत', body: 'आपके ऋण अनुरोध को समूह नेता द्वारा अस्वीकार कर दिया गया है।' })
   },
+  LOAN_OPPORTUNITY: {
+    en: (data) => ({ title: 'New Loan Opportunity', body: `${data?.groupName || 'A group'} has applied for a loan of ₹${data?.amount}. Review and fund this opportunity.` }),
+    hi: (data) => ({ title: 'नया ऋण अवसर', body: `${data?.groupName || 'एक समूह'} ने ₹${data?.amount} के ऋण के लिए आवेदन किया है। इस अवसर की समीक्षा करें और फंड करें।` })
+  },
   MEMBER_REMOVED: {
     en: (data) => ({ title: 'Removed from Group', body: `You have been removed from the group ${data?.groupName}.` }),
     hi: (data) => ({ title: 'समूह से हटाया गया', body: `आपको समूह ${data?.groupName} से हटा दिया गया है।` })
