@@ -56,6 +56,9 @@ export default function GroupScreen() {
   const [deleteModeShgId, setDeleteModeShgId] = useState<string | null>(null)
   const [swipeProgress, setSwipeProgress] = useState(0)
 
+  // Store panResponders for each SHG
+  const panRespondersRef = useRef<Record<string, any>>({}).current
+
   // Animation
   const fadeAnim = useRef(new Animated.Value(0)).current
 
@@ -449,8 +452,9 @@ export default function GroupScreen() {
             const pendingLoans = (shg.loans || []).filter((l: any) => l.status === 'PENDING')
             const isInDeleteMode = deleteModeShgId === shg.id
 
-            const panResponder = useRef(
-              PanResponder.create({
+            // Create panResponder if not exists
+            if (!panRespondersRef[shg.id]) {
+              panRespondersRef[shg.id] = PanResponder.create({
                 onStartShouldSetPanResponder: () => isInDeleteMode,
                 onMoveShouldSetPanResponder: () => isInDeleteMode,
                 onPanResponderMove: (_, gestureState) => {
@@ -470,7 +474,9 @@ export default function GroupScreen() {
                   setSwipeProgress(0)
                 },
               })
-            ).current
+            }
+
+            const panResponder = panRespondersRef[shg.id]
 
             return (
               <View key={shg.id} style={[styles.accordionContainer, shadows.sm]}>

@@ -37,72 +37,75 @@ export const getPortfolioMetrics = async (userId: string) => {
 
 /**
  * Get available lending pools — filtered by risk tier and geography.
- * Implements the FIFO geographic filter model.
+ * Returns all active SHG groups (not just those with pending loans).
  */
 export const getAvailablePools = async (filters?: { tier?: string; state?: string }) => {
   const where: any = {
-    status: 'PENDING',
+    isActive: true,
   }
 
-  // Fetch pending loans joined with SHG data
-  const loans = await prisma.loan.findMany({
+  // Fetch all active SHG groups
+  const shgGroups = await prisma.sHGGroup.findMany({
     where,
     include: {
-      shg: {
-        select: {
-          id: true,
-          name: true,
-          district: true,
-          state: true,
-          village: true,
-          poolContractAddress: true,
-          members: {
-            select: { userId: true },
-          },
-        },
+      members: {
+        select: { userId: true },
       },
-      member: {
+      loans: {
+        where: { status: 'PENDING' },
         select: {
           id: true,
-          name: true,
-          kycStatus: true,
+          amount: true,
+          mlScore: true,
+          purpose: true,
+          interestRateBps: true,
+          tenureMonths: true,
+          txHash: true,
+          createdAt: true,
         },
       },
     },
-    orderBy: { createdAt: 'asc' }, // FIFO — oldest loans funded first
+    orderBy: { createdAt: 'asc' },
   })
 
   // Filter by state (post-query for now)
   const filtered = filters?.state && filters.state !== 'All States'
-    ? loans.filter(l => l.shg.state === filters.state)
-    : loans
+    ? shgGroups.filter(g => g.state === filters.state)
+    : shgGroups
 
-  // Map risk tier from ML score
-  const getRiskTier = (mlScore: number | null): string => {
-    if (!mlScore) return 'B'
-    if (mlScore >= 750) return 'AA'
-    if (mlScore >= 600) return 'A'
+  // Map risk tier from average ML score of pending loans
+  const getRiskTier = (loans: any[]): string => {
+    if (loans.length === 0) return 'B'
+    const avgScore = loans.reduce((sum, l) => sum + (l.mlScore || 650), 0) / loans.length
+    if (avgScore >= 750) return 'AA'
+    if (avgScore >= 600) return 'A'
     return 'B'
   }
 
   const pools = filtered
-    .map(loan => ({
-      id: loan.id,
-      shgName: loan.shg.name,
-      district: loan.shg.district,
-      state: loan.shg.state,
-      village: loan.shg.village,
-      poolContractAddress: loan.shg.poolContractAddress,
-      tier: getRiskTier(loan.mlScore),
-      amountInr: Number(loan.amount),
-      funded: 0,  // Phase 2: track from on-chain events
-      memberCount: loan.shg.members.length,
-      purpose: loan.purpose || 'General',
-      interestRateBps: loan.interestRateBps,
-      tenureMonths: loan.tenureMonths,
-      txHash: loan.txHash,
-      createdAt: loan.createdAt,
-    }))
+    .map(shg => {
+      const pendingLoans = shg.loans
+      const latestLoan = pendingLoans[0] || null
+      
+      return {
+        id: shg.id,
+        shgName: shg.name,
+        district: shg.district,
+        state: shg.state,
+        village: shg.village,
+        poolContractAddress: shg.poolContractAddress,
+        tier: getRiskTier(pendingLoans),
+        amountInr: latestLoan ? Number(latestLoan.amount) : 0,
+        funded: 0,
+        memberCount: shg.members.length,
+        purpose: latestLoan?.purpose || 'General',
+        interestRateBps: latestLoan?.interestRateBps || 1800,
+        tenureMonths: latestLoan?.tenureMonths || 12,
+        txHash: latestLoan?.txHash || null,
+        createdAt: latestLoan?.createdAt || shg.createdAt,
+        hasPendingLoan: pendingLoans.length > 0,
+      }
+    })
     .filter(p => {
       if (filters?.tier && filters.tier !== 'ALL') {
         return p.tier === filters.tier
