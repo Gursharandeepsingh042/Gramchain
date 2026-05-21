@@ -58,9 +58,45 @@ export default function GroupScreen() {
 
   // Store panResponders for each SHG
   const panRespondersRef = useRef<Record<string, any>>({}).current
+  const deleteModeShgIdRef = useRef<string | null>(null)
 
   // Animation
   const fadeAnim = useRef(new Animated.Value(0)).current
+  const shakeAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    deleteModeShgIdRef.current = deleteModeShgId
+  }, [deleteModeShgId])
+
+  useEffect(() => {
+    let animation: Animated.CompositeAnimation | null = null
+    if (deleteModeShgId) {
+      shakeAnim.setValue(0)
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(shakeAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: -1, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
+        ])
+      )
+      animation.start()
+    } else {
+      shakeAnim.setValue(0)
+    }
+    return () => {
+      if (animation) animation.stop()
+    }
+  }, [deleteModeShgId])
+
+  const shakeRotate = shakeAnim.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-10deg', '10deg'],
+  })
+
+  const shakeTranslate = shakeAnim.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-3, 3],
+  })
 
   const loadShgs = async () => {
     try {
@@ -283,6 +319,9 @@ export default function GroupScreen() {
   }
 
   const handleLongPress = (shgId: string) => {
+    // Only allow entering delete mode if the group is closed (not expanded)
+    if (expandedShgId === shgId) return
+
     if (deleteModeShgId === shgId) {
       setDeleteModeShgId(null)
       setSwipeProgress(0)
@@ -455,16 +494,16 @@ export default function GroupScreen() {
             // Create panResponder if not exists
             if (!panRespondersRef[shg.id]) {
               panRespondersRef[shg.id] = PanResponder.create({
-                onStartShouldSetPanResponder: () => isInDeleteMode,
-                onMoveShouldSetPanResponder: () => isInDeleteMode,
+                onStartShouldSetPanResponder: () => deleteModeShgIdRef.current === shg.id,
+                onMoveShouldSetPanResponder: () => deleteModeShgIdRef.current === shg.id,
                 onPanResponderMove: (_, gestureState) => {
-                  if (gestureState.dx > 0) {
-                    const progress = Math.min(gestureState.dx / 150, 1)
+                  if (gestureState.dx < 0) {
+                    const progress = Math.min(Math.abs(gestureState.dx) / 150, 1)
                     setSwipeProgress(progress)
                   }
                 },
                 onPanResponderRelease: (_, gestureState) => {
-                  if (gestureState.dx > 100) {
+                  if (gestureState.dx < -100) {
                     handleSwipeDelete(shg, memberCount)
                   } else {
                     setSwipeProgress(0)
@@ -480,22 +519,6 @@ export default function GroupScreen() {
 
             return (
               <View key={shg.id} style={[styles.accordionContainer, shadows.sm]}>
-                {isInDeleteMode && (
-                  <View style={styles.deleteOverlay}>
-                    <Animated.View
-                      style={[
-                        styles.deleteBin,
-                        {
-                          opacity: swipeProgress,
-                          transform: [{ scale: 0.8 + swipeProgress * 0.2 }]
-                        }
-                      ]}
-                    >
-                      <Ionicons name="trash" size={32} color={colors.danger[600]} />
-                    </Animated.View>
-                  </View>
-                )}
-
                 {/* ── Accordion Header (always visible) ── */}
                 <View
                   {...panResponder.panHandlers}
@@ -509,48 +532,73 @@ export default function GroupScreen() {
                     style={styles.headerTouchable}
                     onPress={() => toggleExpand(shg.id)}
                     onLongPress={() => handleLongPress(shg.id)}
-                    delayLongPress={500}
+                    delayLongPress={2000} // hold for 2 seconds to trigger
                     activeOpacity={0.85}
                   >
-                  <View style={[styles.groupLogo, isExpanded && styles.groupLogoExpanded]}>
-                    <Text style={styles.groupLogoText}>
-                      {shg.name?.charAt(0)?.toUpperCase() || 'S'}
-                    </Text>
-                  </View>
-                  <View style={styles.groupInfo}>
-                    <Text style={[styles.groupName, isExpanded && { color: '#fff' }]}>
-                      {shg.name}
-                    </Text>
-                    <Text style={[styles.groupLocation, isExpanded && { color: 'rgba(255,255,255,0.7)' }]}>
-                      📍 {shg.district}{shg.state ? `, ${shg.state}` : ''}
-                    </Text>
-                  </View>
-                  <View style={styles.accordionMeta}>
-                    {isLeader && memberCount === 1 && (
-                      <TouchableOpacity
-                        style={styles.headerDeleteBtn}
-                        onPress={(e) => {
-                          e.stopPropagation()
-                          handleDeleteGroup(shg)
-                        }}
-                        disabled={deletingGroup === shg.id}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={18}
-                          color={isExpanded ? '#fff' : colors.danger[500]}
-                        />
-                      </TouchableOpacity>
+                    {isInDeleteMode ? (
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Animated.View
+                          style={[
+                            styles.groupInfo,
+                            {
+                              transform: [
+                                { translateX: -swipeProgress * 120 },
+                                { scale: 1 - swipeProgress * 0.3 }
+                              ],
+                              opacity: 1 - swipeProgress,
+                            }
+                          ]}
+                        >
+                          <Text style={[styles.groupName, { color: '#fff' }]}>
+                            {shg.name}
+                          </Text>
+                          <Text style={[styles.groupLocation, { color: 'rgba(255,255,255,0.9)', fontWeight: '700' }]}>
+                            ➔ {t('group.swipeToDelete', { defaultValue: 'Swipe left to delete' })}
+                          </Text>
+                        </Animated.View>
+
+                        <Animated.View
+                          style={[
+                            styles.tremblingBinContainer,
+                            {
+                              transform: [
+                                { rotate: shakeRotate },
+                                { translateX: shakeTranslate },
+                                { scale: 1.0 + swipeProgress * 0.3 }
+                              ]
+                            }
+                          ]}
+                        >
+                          <Ionicons name="trash" size={24} color="#dc2626" />
+                        </Animated.View>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={[styles.groupLogo, isExpanded && styles.groupLogoExpanded]}>
+                          <Text style={styles.groupLogoText}>
+                            {shg.name?.charAt(0)?.toUpperCase() || 'S'}
+                          </Text>
+                        </View>
+                        <View style={styles.groupInfo}>
+                          <Text style={[styles.groupName, isExpanded && { color: '#fff' }]}>
+                            {shg.name}
+                          </Text>
+                          <Text style={[styles.groupLocation, isExpanded && { color: 'rgba(255,255,255,0.7)' }]}>
+                            📍 {shg.district}{shg.state ? `, ${shg.state}` : ''}
+                          </Text>
+                        </View>
+                        <View style={styles.accordionMeta}>
+                          <Text style={[styles.accordionMemberCount, isExpanded && { color: 'rgba(255,255,255,0.8)' }]}>
+                            {memberCount} members
+                          </Text>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={20}
+                            color={isExpanded ? '#fff' : colors.gray[400]}
+                          />
+                        </View>
+                      </>
                     )}
-                    <Text style={[styles.accordionMemberCount, isExpanded && { color: 'rgba(255,255,255,0.8)' }]}>
-                      {memberCount} members
-                    </Text>
-                    <Ionicons
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={20}
-                      color={isExpanded ? '#fff' : colors.gray[400]}
-                    />
-                  </View>
                   </TouchableOpacity>
                 </View>
 
@@ -967,7 +1015,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   accordionHeaderDeleteMode: {
-    backgroundColor: colors.danger[50],
+    backgroundColor: '#dc2626',
+  },
+  tremblingBinContainer: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
   },
   deleteOverlay: {
     position: 'absolute',
