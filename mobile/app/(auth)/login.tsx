@@ -264,7 +264,7 @@ export default function LoginScreen() {
         }]}>
             <View style={styles.logoContainer}>
                 <Image 
-                    source={require('../../assets/icon.png')}
+                    source={require('../../assets/circular logo.png')}
                     style={styles.logo}
                     resizeMode="cover"
                 />

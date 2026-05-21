@@ -63,7 +63,7 @@ export default function WelcomeScreen() {
         <Animated.View style={[styles.hero, { opacity: logoAnim, transform: [{ scale: logoAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
             <View style={styles.logoCircle}>
                 <Image 
-                    source={require('../../assets/icon.png')} 
+                    source={require('../../assets/circular logo.png')} 
                     style={styles.logo}
                     resizeMode="cover"
                 />

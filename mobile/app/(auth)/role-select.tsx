@@ -56,7 +56,7 @@ export default function RoleSelectScreen() {
         <Animated.View style={[styles.header, makeAnim(headerAnim)]}>
           <View style={styles.logoCircle}>
             <Image
-              source={require('../../assets/icon.png')}
+              source={require('../../assets/circular logo.png')}
               style={styles.logo}
               resizeMode="cover"
             />

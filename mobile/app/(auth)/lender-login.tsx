@@ -199,7 +199,7 @@ export default function LenderLoginScreen() {
             transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
           }]}>
             <View style={styles.logoContainer}>
-              <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="cover" />
+              <Image source={require('../../assets/circular logo.png')} style={styles.logo} resizeMode="cover" />
             </View>
             <View style={styles.lenderBadge}>
               <Text style={styles.lenderBadgeIcon}>💎</Text>
