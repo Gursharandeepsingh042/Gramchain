@@ -6,6 +6,8 @@ import { logger } from '@/utils/logger'
 
 // Replace with localhost when running locally and EXPO is on actual device. 
 // Uses auto-detection via Constants.expoConfig.hostUri for zero-config dev.
+export const getApiBaseUrl = () => getBaseUrl()
+
 const getBaseUrl = () => {
   // If production URL is provided and doesn't look like a local IP, use it
   if (process.env.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_URL.includes('192.168')) {

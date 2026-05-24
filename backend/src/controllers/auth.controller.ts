@@ -238,6 +238,105 @@ export const checkEmail = async (req: Request, res: Response, next: NextFunction
 }
 
 /**
+ * GET /auth/google/mobile-start
+ * Initiates Google OAuth for mobile apps.
+ * Query: returnUrl (exp:// or gramchain:// deep link for the app to return to)
+ * Redirects the browser to Google's consent screen.
+ */
+export const googleMobileStart = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const returnUrl = (req.query.returnUrl as string) || 'gramchain://'
+    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
+    const backendUrl = `${req.protocol}://${req.get('host')}`
+    const callbackUrl = `${backendUrl}/api/v1/auth/google/mobile-callback`
+
+    // Encode returnUrl into state so we know where to redirect after
+    const state = Buffer.from(JSON.stringify({ returnUrl })).toString('base64url')
+
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID!,
+      redirect_uri: callbackUrl,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state,
+      access_type: 'offline',
+      prompt: 'select_account',
+    })
+
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`)
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * GET /auth/google/mobile-callback
+ * Google redirects here after consent. Exchanges code for tokens,
+ * creates/finds the user, then redirects back to the mobile app with JWT tokens.
+ */
+export const googleMobileCallback = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { code, state, error: oauthError } = req.query as Record<string, string>
+
+    // Decode returnUrl from state
+    let returnUrl = 'gramchain://'
+    try {
+      const parsed = JSON.parse(Buffer.from(state || '', 'base64url').toString())
+      returnUrl = parsed.returnUrl || returnUrl
+    } catch { /* use default */ }
+
+    if (oauthError || !code) {
+      const errorUrl = new URL(returnUrl)
+      errorUrl.searchParams.set('error', oauthError || 'no_code')
+      res.redirect(errorUrl.toString())
+      return
+    }
+
+    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
+    const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
+    const backendUrl = `${req.protocol}://${req.get('host')}`
+    const callbackUrl = `${backendUrl}/api/v1/auth/google/mobile-callback`
+
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID!,
+        client_secret: GOOGLE_CLIENT_SECRET!,
+        redirect_uri: callbackUrl,
+        grant_type: 'authorization_code',
+      }),
+    })
+    const tokenData = await tokenRes.json() as any
+
+    if (!tokenData.id_token) {
+      const errorUrl = new URL(returnUrl)
+      errorUrl.searchParams.set('error', 'token_exchange_failed')
+      res.redirect(errorUrl.toString())
+      return
+    }
+
+    // Verify the ID token and login/register user
+    const result = await AuthService.verifyGoogleSignIn(tokenData.id_token)
+
+    // Redirect back to the mobile app with tokens
+    const successUrl = new URL(returnUrl)
+    successUrl.searchParams.set('accessToken', result.accessToken)
+    successUrl.searchParams.set('refreshToken', result.refreshToken)
+    successUrl.searchParams.set('userId', result.user.id)
+    successUrl.searchParams.set('userName', result.user.name || '')
+    successUrl.searchParams.set('userEmail', result.user.email || '')
+    successUrl.searchParams.set('kycStatus', result.user.kycStatus || '')
+    successUrl.searchParams.set('userRole', result.user.role || 'BORROWER')
+    res.redirect(successUrl.toString())
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
  * POST /auth/firebase
  * Body: { idToken: string, name?: string, groupCode?: string }
  */

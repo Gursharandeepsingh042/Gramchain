@@ -44,6 +44,12 @@ router.post('/verify-otp', AuthController.verifyOtp)
 /** @route POST /auth/google */
 router.post('/google', AuthController.verifyGoogle)
 
+/** @route GET /auth/google/mobile-start — Opens Google consent screen for mobile */
+router.get('/google/mobile-start', AuthController.googleMobileStart)
+
+/** @route GET /auth/google/mobile-callback — Google redirects here, then we redirect to app */
+router.get('/google/mobile-callback', AuthController.googleMobileCallback)
+
 /** @route POST /auth/login */
 router.post('/login', AuthController.loginWithPassword)
 

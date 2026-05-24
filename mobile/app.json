@@ -27,6 +27,11 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
+              "com.gramchain.gramchain"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
               "com.googleusercontent.apps.51986108180-0rderk57ou6h3k2hf9k2g64bq5f4kp5h"
             ]
           }
@@ -47,6 +52,20 @@
         "CAMERA",
         "INTERNET",
         "ACCESS_NETWORK_STATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "com.gramchain.gramchain"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "plugins": [
@@ -71,7 +90,8 @@
             "useFrameworks": "static"
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "scheme": "gramchain",
     "experiments": {

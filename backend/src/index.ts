@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import type { CorsOptions } from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import compression from 'compression'
@@ -82,8 +83,50 @@ app.set('trust proxy', 1)
 // ─── Allowed Origins ─────────────────────────────────────────
 // In production, set ALLOWED_ORIGINS=https://yourdomain.com,gramchain://
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:3000', 'http://localhost:8081']
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+  : [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
+    'http://localhost:19006',
+    'http://127.0.0.1:19006',
+    'exp://localhost:19000',
+    'exp://127.0.0.1:19000',
+    'gramchain://',
+  ]
+
+const isProd = process.env.NODE_ENV === 'production'
+const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\\d+)?$/
+
+const matchesAllowedOrigin = (origin: string, allowed: string) => {
+  if (allowed === '*') return true
+  if (allowed.endsWith('*')) {
+    return origin.startsWith(allowed.slice(0, -1))
+  }
+  return origin === allowed
+}
+
+const isOriginAllowed = (origin?: string) => {
+  if (!origin) return true // Non-browser clients (Postman, curl)
+  if (allowedOrigins.some(allowed => matchesAllowedOrigin(origin, allowed))) return true
+  if (!isProd) {
+    if (localhostRegex.test(origin)) return true
+    if (origin.startsWith('exp://') || origin.startsWith('gramchain://')) return true
+  }
+  return false
+}
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (isOriginAllowed(origin ?? undefined)) {
+      return callback(null, true)
+    }
+    logger.warn({ origin }, 'Blocked request with disallowed CORS origin')
+    return callback(null, false)
+  },
+  credentials: true,
+}
 
 // ─── Sentry — must be initialized BEFORE other middleware to capture errors ─
 // No-op if SENTRY_DSN is not set.
@@ -91,16 +134,13 @@ void initSentry(app)
 
 // ─── SEC11: Security & Performance Middleware ───────────────
 app.use(helmet({
-  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+  contentSecurityPolicy: isProd ? undefined : false,
   crossOriginEmbedderPolicy: false,
-  hsts: process.env.NODE_ENV === 'production'
+  hsts: isProd
     ? { maxAge: 31536000, includeSubDomains: true, preload: true }
     : false,
 }))
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
-  credentials: true,
-}))
+app.use(cors(corsOptions))
 app.use(compression())
 
 // ─── Razorpay Webhook (RAW body required for signature verification) ─

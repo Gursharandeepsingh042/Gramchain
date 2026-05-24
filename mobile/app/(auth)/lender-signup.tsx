@@ -1,23 +1,19 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, useWindowDimensions
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { authApi } from '@/services/api'
+import { authApi, getApiBaseUrl } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { startPhoneOtp, getActivePhoneSession } from '@/services/phoneAuth'
-import { auth } from '@/services/firebase'
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth'
-import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
 import { makeRedirectUri } from 'expo-auth-session'
-import Constants from 'expo-constants'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -29,7 +25,6 @@ type SignupStep = 1 | 2 | 3
  * Step 2: Enter phone + OTP verification
  * Step 3: Full name, password, investor type
  */
-WebBrowser.maybeCompleteAuthSession()
 
 export default function LenderSignupScreen() {
   const { setAuth } = useAuthStore()
@@ -59,52 +54,51 @@ export default function LenderSignupScreen() {
     [width, height, insets.bottom, insets.top],
   )
 
-  const isExpoGo = Constants.appOwnership === 'expo'
-  const redirectUri = isExpoGo
-    ? 'https://auth.expo.io/@sharan66/gramchain'
-    : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
+  // Google Auth — backend-proxied flow (no auth.expo.io dependency)
+  const returnUrl = makeRedirectUri({ scheme: 'gramchain' })
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // Expo Go: only send the Web client. Native builds: send platform IDs.
-    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    redirectUri,
-  })
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response
-      const token = authentication?.idToken || authentication?.accessToken
-      if (token) {
-        handleGoogleSignup(token, !!authentication?.idToken)
-      } else {
-        setError('Google sign-up failed: no token returned.')
-      }
-    } else if (response?.type === 'error') {
-      const baseMsg = response.error?.message || 'Google sign-up was cancelled or failed.'
-      const tip = request?.redirectUri
-        ? `\n\nIf this says "redirect_uri_mismatch", add this URL to your Google OAuth Web Client → Authorized redirect URIs:\n${request.redirectUri}`
-        : ''
-      setError(baseMsg + tip)
-    }
-  }, [response, request])
-
-  const handleGoogleSignup = async (token: string, isIdToken = true) => {
+  const handleGoogleSignup = async () => {
     setLoading(true)
     setError('')
     try {
-      const credential = isIdToken
-        ? GoogleAuthProvider.credential(token)
-        : GoogleAuthProvider.credential(null, token)
-      const userCredential = await signInWithCredential(auth, credential)
-      const firebaseToken = await userCredential.user.getIdToken()
+      const baseUrl = getApiBaseUrl()
+      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}`
 
-      const res = await authApi.verifyFirebase(firebaseToken, undefined, undefined, undefined, 'LENDER')
-      const { accessToken, refreshToken, user } = res.data.data
-      setAuth(accessToken, refreshToken, { ...user, role: 'LENDER' })
-      router.replace('/portfolio' as any)
+      const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl)
+
+      if (result.type === 'success' && result.url) {
+        const url = new URL(result.url)
+        const errorParam = url.searchParams.get('error')
+        if (errorParam) {
+          setError(`Google sign-up failed: ${errorParam}`)
+          return
+        }
+
+        const accessToken = url.searchParams.get('accessToken')
+        const refreshToken = url.searchParams.get('refreshToken')
+        const userId = url.searchParams.get('userId')
+        const userName = url.searchParams.get('userName')
+        const userEmail = url.searchParams.get('userEmail')
+        const kycStatus = url.searchParams.get('kycStatus')
+
+        if (!accessToken || !refreshToken || !userId) {
+          setError('Google sign-up failed: incomplete response.')
+          return
+        }
+
+        const user = {
+          id: userId,
+          name: userName || '',
+          email: userEmail || '',
+          kycStatus: kycStatus || '',
+          role: 'LENDER',
+        } as any
+
+        setAuth(accessToken, refreshToken, user)
+        router.replace('/portfolio' as any)
+      } else if (result.type === 'cancel' || result.type === 'dismiss') {
+        setError('Google sign-up was cancelled.')
+      }
     } catch (err: any) {
       setError(err.message || 'Google signup failed')
     } finally {
@@ -113,12 +107,8 @@ export default function LenderSignupScreen() {
   }
 
   const handleGoogleButtonPress = () => {
-    if (!request) {
-      setError('Google sign-up is still preparing. Please try again shortly.')
-      return
-    }
     setError('')
-    promptAsync().catch(() => setError('Google sign-up was cancelled.'))
+    handleGoogleSignup()
   }
 
   const handleResendOtp = async () => {

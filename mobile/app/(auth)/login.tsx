@@ -6,18 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import * as Google from 'expo-auth-session/providers/google'
 import * as WebBrowser from 'expo-web-browser'
 import { makeRedirectUri } from 'expo-auth-session'
-import Constants from 'expo-constants'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
 import { Alert } from 'react-native'
-import { auth } from '@/services/firebase'
 import { startPhoneOtp } from '@/services/phoneAuth'
-import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth'
-import { authApi } from '@/services/api'
+import { authApi, getApiBaseUrl } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -25,8 +20,6 @@ import { colors } from '@/constants/colors'
 import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-
-WebBrowser.maybeCompleteAuthSession()
 
 export default function LoginScreen() {
   const { setAuth } = useAuthStore()
@@ -56,74 +49,59 @@ export default function LoginScreen() {
     [width, height, insets.bottom, insets.top],
   )
 
-  // Google Auth — use explicit redirect URI for Expo Go, auto-detect for standalone
-  const isExpoGo = Constants.appOwnership === 'expo'
-  const redirectUri = isExpoGo
-    ? 'https://auth.expo.io/@sharan66/gramchain'
-    : makeRedirectUri({ scheme: 'gramchain', native: 'gramchain://' })
+  // Google Auth — backend-proxied flow (no auth.expo.io dependency)
+  const returnUrl = makeRedirectUri({ scheme: 'gramchain' })
 
-  console.log('[Google Auth] clientId =', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID)
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // In Expo Go we MUST send only the Web client ID against the auth.expo.io
-    // proxy redirect. Passing androidClientId/iosClientId in Expo Go makes
-    // expo-auth-session pick the platform client, which Google then rejects
-    // with the "deleted_client / authorized blocked" page because the
-    // Android/iOS clients don't accept the HTTPS proxy redirect URI.
-    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: isExpoGo ? undefined : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    redirectUri,
-  })
-
-  useEffect(() => {
-    if (request) console.log('[Google Auth] redirectUri =', request.redirectUri)
-  }, [request])
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response
-      // expo-auth-session may return accessToken only; use whichever is present
-      const token = authentication?.idToken || authentication?.accessToken
-      if (token) {
-        handleGoogleLogin(token, !!authentication?.idToken)
-      } else {
-        setError('Google sign-in failed: no token returned.')
-      }
-    } else if (response?.type === 'error') {
-      const baseMsg = response.error?.message || 'Google sign-in was cancelled or failed.'
-      const tip = request?.redirectUri
-        ? `\n\nIf this says "redirect_uri_mismatch", add this URL to your Google OAuth Web Client → Authorized redirect URIs:\n${request.redirectUri}`
-        : ''
-      setError(baseMsg + tip)
-    }
-  }, [response, request])
-
-  const handleGoogleLogin = async (token: string, isIdToken = true) => {
+  const handleGoogleLogin = async () => {
     setLoading(true)
     setError('')
     try {
-      console.log('[Google Auth] Token received, isIdToken:', isIdToken)
-      // Build Firebase credential — idToken preferred, accessToken as fallback
-      const credential = isIdToken
-        ? GoogleAuthProvider.credential(token)
-        : GoogleAuthProvider.credential(null, token)
-      console.log('[Google Auth] Credential created')
-      const userCredential = await signInWithCredential(auth, credential)
-      console.log('[Google Auth] Firebase sign-in successful')
-      const firebaseToken = await userCredential.user.getIdToken()
-      console.log('[Google Auth] Firebase token obtained')
+      const baseUrl = getApiBaseUrl()
+      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}`
+      console.log('[Google Auth] Opening:', startUrl)
+      console.log('[Google Auth] Return URL:', returnUrl)
 
-      const res = await authApi.verifyFirebase(firebaseToken)
-      console.log('[Google Auth] Backend verification successful')
-      const { accessToken, refreshToken, user } = res.data.data
-      setAuth(accessToken, refreshToken, user)
-      router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
+      const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl)
+      console.log('[Google Auth] Result type:', result.type)
+
+      if (result.type === 'success' && result.url) {
+        const url = new URL(result.url)
+        const errorParam = url.searchParams.get('error')
+        if (errorParam) {
+          setError(`Google sign-in failed: ${errorParam}`)
+          return
+        }
+
+        const accessToken = url.searchParams.get('accessToken')
+        const refreshToken = url.searchParams.get('refreshToken')
+        const userId = url.searchParams.get('userId')
+        const userName = url.searchParams.get('userName')
+        const userEmail = url.searchParams.get('userEmail')
+        const kycStatus = url.searchParams.get('kycStatus')
+        const userRole = url.searchParams.get('userRole')
+
+        if (!accessToken || !refreshToken || !userId) {
+          setError('Google sign-in failed: incomplete response.')
+          return
+        }
+
+        const user = {
+          id: userId,
+          name: userName || '',
+          email: userEmail || '',
+          kycStatus: kycStatus || '',
+          role: userRole || 'BORROWER',
+        } as any
+
+        setAuth(accessToken, refreshToken, user)
+        console.log('[Google Auth] Login successful for:', userEmail)
+        router.replace(kycStatus === 'VERIFIED' ? '/' : '/kyc')
+      } else if (result.type === 'cancel' || result.type === 'dismiss') {
+        setError('Google sign-in was cancelled.')
+      }
     } catch (err: any) {
       console.error('[Google Auth] Error:', err)
-      const errorMsg = err.response?.data?.error?.message || err.message || 'Google login failed'
-      setError(errorMsg)
+      setError(err.message || 'Google login failed')
     } finally {
       setLoading(false)
     }
@@ -231,12 +209,8 @@ export default function LoginScreen() {
 
 
   const handleGooglePress = () => {
-    if (!request) {
-      setError('Google sign-in is still preparing. Please try again in a moment.')
-      return
-    }
     setError('')
-    promptAsync().catch(() => setError('Google sign-in was cancelled.'))
+    handleGoogleLogin()
   }
 
   return (
