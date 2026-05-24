@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, ScrollView, Alert, useWindowDimensions
+  TouchableOpacity, ScrollView, Alert, useWindowDimensions, ActivityIndicator
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -9,7 +9,6 @@ import { Ionicons } from '@expo/vector-icons'
 import { authApi, getApiBaseUrl } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { startPhoneOtp, getActivePhoneSession } from '@/services/phoneAuth'
@@ -291,13 +290,16 @@ export default function SignupScreen() {
                         <View style={styles.dividerLine} />
                     </View>
 
-                    <Button
-                        label="Sign up with Google"
+                    <TouchableOpacity
                         onPress={handleGoogleButtonPress}
-                        variant="outline"
                         style={styles.googleBtn}
-                        icon={<GoogleLogo size={20} />}
-                    />
+                        activeOpacity={0.7}
+                    >
+                        <View style={styles.googleBtnContent}>
+                            <GoogleLogo size={20} />
+                            <Text style={styles.googleBtnText}>Sign up with Google</Text>
+                        </View>
+                    </TouchableOpacity>
                 </View>
             )}
 
@@ -417,14 +419,20 @@ export default function SignupScreen() {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <Button
-                label={step === 3 ? "REGISTER & FINISH" : "CONTINUE"}
+            <TouchableOpacity
                 onPress={handleContinue}
-                loading={loading}
-                size="xl"
-                variant="primary"
                 style={styles.continueBtn}
-            />
+                activeOpacity={0.7}
+                disabled={loading}
+            >
+                <View style={styles.continueBtnContent}>
+                    {loading ? (
+                        <ActivityIndicator color={colors.text.inverse} size="small" />
+                    ) : (
+                        <Text style={styles.continueBtnText}>{step === 3 ? "REGISTER & FINISH" : "CONTINUE"}</Text>
+                    )}
+                </View>
+            </TouchableOpacity>
 
             <TouchableOpacity 
                 style={styles.loginLink}
@@ -606,6 +614,38 @@ const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => 
       borderRadius: radius.pill,
       height: 52,
       borderColor: colors.gray[200],
+      borderWidth: 1.5,
+      backgroundColor: 'transparent',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    googleBtnContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    googleBtnText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.primary[600],
+    },
+    continueBtn: {
+      marginTop: 12,
+      borderRadius: radius.pill,
+      height: 52,
+      backgroundColor: colors.primary[600],
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    continueBtnContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    continueBtnText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.inverse,
     },
     otpHint: {
       fontSize: isTablet ? 18 : 16,
@@ -660,11 +700,6 @@ const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => 
     linkText: {
       color: colors.primary[600],
       fontWeight: '700',
-    },
-    continueBtn: {
-      marginTop: 12,
-      borderRadius: radius.pill,
-      height: 56,
     },
     loginLink: {
       alignItems: 'center',

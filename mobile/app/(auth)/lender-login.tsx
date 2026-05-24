@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import {
   View, Text, StyleSheet,
-  TouchableOpacity, ScrollView, Animated, Alert, KeyboardAvoidingView, Platform, useWindowDimensions, Image
+  TouchableOpacity, ScrollView, Animated, Alert, KeyboardAvoidingView, Platform, useWindowDimensions, Image, ActivityIndicator
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -13,7 +13,6 @@ import * as SecureStore from 'expo-secure-store'
 import { authApi, getApiBaseUrl } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
 import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
 import { colors } from '@/constants/colors'
 import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/design'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
@@ -244,14 +243,20 @@ export default function LenderLoginScreen() {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <Button
-              label="LOGIN TO PORTFOLIO"
+            <TouchableOpacity
               onPress={handleLogin}
-              loading={loading}
-              size="xl"
-              variant="primary"
               style={styles.loginBtn}
-            />
+              activeOpacity={0.7}
+              disabled={loading}
+            >
+              <View style={styles.loginBtnContent}>
+                {loading ? (
+                  <ActivityIndicator color={colors.text.inverse} size="small" />
+                ) : (
+                  <Text style={styles.loginBtnText}>LOGIN TO PORTFOLIO</Text>
+                )}
+              </View>
+            </TouchableOpacity>
 
             <View style={styles.divider}>
               <View style={styles.line} />
@@ -259,14 +264,16 @@ export default function LenderLoginScreen() {
               <View style={styles.line} />
             </View>
 
-            <Button
-              label="Login with Google"
+            <TouchableOpacity
               onPress={handleGooglePress}
-              variant="outline"
-              icon={<GoogleLogo size={20} />}
-              size="xl"
               style={styles.googleBtn}
-            />
+              activeOpacity={0.7}
+            >
+              <View style={styles.googleBtnContent}>
+                <GoogleLogo size={20} />
+                <Text style={styles.googleBtnText}>Login with Google</Text>
+              </View>
+            </TouchableOpacity>
 
             {/* Demo Login — skip all auth for testing */}
             <TouchableOpacity style={styles.demoBtn} onPress={handleDemoLogin}>
@@ -457,6 +464,18 @@ const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => 
       borderRadius: radius.pill,
       height: 56,
       backgroundColor: colors.info[600],
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loginBtnContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    loginBtnText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.inverse,
     },
     divider: {
       flexDirection: 'row',
@@ -479,6 +498,20 @@ const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => 
       borderRadius: radius.pill,
       height: 56,
       borderColor: colors.gray[200],
+      borderWidth: 1.5,
+      backgroundColor: 'transparent',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    googleBtnContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    googleBtnText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.primary[600],
     },
     yieldBanner: {
       marginTop: 20,
