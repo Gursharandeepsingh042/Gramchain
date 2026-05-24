@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  TouchableOpacity, Image, ScrollView, useWindowDimensions, Animated
+  TouchableOpacity, Image, ScrollView, useWindowDimensions, Animated, ActivityIndicator
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -61,14 +61,16 @@ export default function LoginScreen() {
     setLoading(true)
     setError('')
     try {
-      await WebBrowser.dismissBrowser()
       const baseUrl = getApiBaseUrl()
       const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}`
       console.log('[Google Auth] Opening:', startUrl)
       console.log('[Google Auth] Return URL:', returnUrl)
+      console.log('[Google Auth] isExpoGo:', isExpoGo)
 
+      console.log('[Google Auth] Calling openAuthSessionAsync...')
       const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl)
       console.log('[Google Auth] Result type:', result.type)
+      console.log('[Google Auth] Result:', result)
 
       if (result.type === 'success' && result.url) {
         const url = new URL(result.url)
@@ -215,6 +217,7 @@ export default function LoginScreen() {
 
 
   const handleGooglePress = () => {
+    console.log('[Google Auth] Button pressed')
     setError('')
     handleGoogleLogin()
   }
@@ -319,14 +322,20 @@ export default function LoginScreen() {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <Button
-                label={loginMode === 'otp' ? "GET OTP" : "LOGIN"}
+            <TouchableOpacity
                 onPress={handleLogin}
-                loading={loading}
-                size="xl"
-                variant="primary"
                 style={styles.loginBtn}
-            />
+                activeOpacity={0.7}
+                disabled={loading}
+            >
+                <View style={styles.loginBtnContent}>
+                    {loading ? (
+                        <ActivityIndicator color={colors.text.inverse} size="small" />
+                    ) : (
+                        <Text style={styles.loginBtnText}>{loginMode === 'otp' ? "GET OTP" : "LOGIN"}</Text>
+                    )}
+                </View>
+            </TouchableOpacity>
 
             <TouchableOpacity 
                 style={styles.biometricBtn}
@@ -344,14 +353,16 @@ export default function LoginScreen() {
                 <View style={styles.line} />
             </View>
 
-            <Button
-                label="Login with Google"
+            <TouchableOpacity
                 onPress={handleGooglePress}
-                variant="outline"
-                icon={<GoogleLogo size={20} />}
-                size="xl"
                 style={styles.googleBtn}
-            />
+                activeOpacity={0.7}
+            >
+                <View style={styles.googleBtnContent}>
+                    <GoogleLogo size={20} />
+                    <Text style={styles.googleBtnText}>Login with Google</Text>
+                </View>
+            </TouchableOpacity>
 
 
         </Animated.View>
@@ -470,6 +481,19 @@ const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => 
       marginTop: 12,
       borderRadius: radius.pill,
       height: 56,
+      backgroundColor: colors.primary[600],
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loginBtnContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    loginBtnText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text.inverse,
     },
     biometricBtn: {
       flexDirection: 'row',
@@ -504,6 +528,20 @@ const createStyles = ({ width, height, topInset, bottomInset }: StyleParams) => 
       borderRadius: radius.pill,
       height: 56,
       borderColor: colors.gray[200],
+      borderWidth: 1.5,
+      backgroundColor: 'transparent',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    googleBtnContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    googleBtnText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.primary[600],
     },
     footer: {
       flexDirection: 'row',
