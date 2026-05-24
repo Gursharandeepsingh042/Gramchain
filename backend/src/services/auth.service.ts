@@ -51,7 +51,8 @@ export const invalidateRefreshTokens = async (userId: string): Promise<void> => 
 // ─── Google Sign-In ──────────────────────────────────────────
 
 /**
- * Verify Google ID Token and login/register user.
+ * Verify Google ID Token and login user (no auto-registration).
+ * User must have already signed up via OTP or signup flow first.
  */
 export const verifyGoogleSignIn = async (idToken: string) => {
   let ticket
@@ -71,14 +72,18 @@ export const verifyGoogleSignIn = async (idToken: string) => {
 
   const { sub: googleId, email, name } = payload
 
-  let user = await prisma.user.findFirst({
+  // Only allow login if user already exists (no auto-registration)
+  const user = await prisma.user.findFirst({
     where: { OR: [{ googleId }, { email: email || '' }] },
   })
 
+  if (!user) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'No account registered with this Google email. Please sign up first.')
+  }
+
+  // Link Google ID if user exists by email but not yet linked
   if (user && !user.googleId) {
-    user = await prisma.user.update({ where: { id: user.id }, data: { googleId } })
-  } else if (!user) {
-    user = await prisma.user.create({ data: { googleId, email, name, role: 'BORROWER' } })
+    await prisma.user.update({ where: { id: user.id }, data: { googleId } })
   }
 
   const accessToken = signAccessToken(user.id)
