@@ -62,7 +62,7 @@ export default function LoginScreen() {
     setError('')
     try {
       const baseUrl = getApiBaseUrl()
-      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}`
+      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}&mode=login&role=BORROWER`
       console.log('[Google Auth] Opening:', startUrl)
       console.log('[Google Auth] Return URL:', returnUrl)
       console.log('[Google Auth] isExpoGo:', isExpoGo)

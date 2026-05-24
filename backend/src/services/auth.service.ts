@@ -51,10 +51,11 @@ export const invalidateRefreshTokens = async (userId: string): Promise<void> => 
 // ─── Google Sign-In ──────────────────────────────────────────
 
 /**
- * Verify Google ID Token and login user (no auto-registration).
- * User must have already signed up via OTP or signup flow first.
+ * Verify Google ID Token and login/signup user based on mode.
+ * mode: 'login' - only allow if user exists
+ * mode: 'signup' - create user if not exists, error if exists
  */
-export const verifyGoogleSignIn = async (idToken: string) => {
+export const verifyGoogleSignIn = async (idToken: string, mode: 'login' | 'signup' = 'login', role: 'BORROWER' | 'LENDER' = 'BORROWER') => {
   let ticket
   try {
     ticket = await googleClient.verifyIdToken({
@@ -72,18 +73,37 @@ export const verifyGoogleSignIn = async (idToken: string) => {
 
   const { sub: googleId, email, name } = payload
 
-  // Only allow login if user already exists (no auto-registration)
   const user = await prisma.user.findFirst({
     where: { OR: [{ googleId }, { email: email || '' }] },
   })
 
-  if (!user) {
-    throw new AppError(404, 'USER_NOT_FOUND', 'No account registered with this Google email. Please sign up first.')
+  if (mode === 'login') {
+    // Login mode: user must exist
+    if (!user) {
+      throw new AppError(404, 'USER_NOT_FOUND', 'No account registered with this Google email. Please sign up first.')
+    }
+    // Link Google ID if user exists by email but not yet linked
+    if (!user.googleId) {
+      await prisma.user.update({ where: { id: user.id }, data: { googleId } })
+    }
+  } else if (mode === 'signup') {
+    // Signup mode: create user if not exists, error if exists
+    if (user) {
+      throw new AppError(409, 'USER_EXISTS', 'An account with this Google email already exists. Please login instead.')
+    }
+    // Create new user
+    const newUser = await prisma.user.create({
+      data: { googleId, email, name, role },
+    })
+    const accessToken = signAccessToken(newUser.id)
+    const refreshToken = signRefreshToken(newUser.id)
+    await storeRefreshToken(newUser.id, refreshToken)
+    return { accessToken, refreshToken, user: newUser }
   }
 
-  // Link Google ID if user exists by email but not yet linked
-  if (user && !user.googleId) {
-    await prisma.user.update({ where: { id: user.id }, data: { googleId } })
+  // At this point, user must exist (login mode)
+  if (!user) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'User not found')
   }
 
   const accessToken = signAccessToken(user.id)

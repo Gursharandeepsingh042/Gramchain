@@ -246,12 +246,14 @@ export const checkEmail = async (req: Request, res: Response, next: NextFunction
 export const googleMobileStart = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const returnUrl = (req.query.returnUrl as string) || 'gramchain://'
+    const mode = (req.query.mode as string) || 'login' // 'login' or 'signup'
+    const role = (req.query.role as string) || 'BORROWER' // 'BORROWER' or 'LENDER'
     const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
     const backendUrl = `${req.protocol}://${req.get('host')}`
     const callbackUrl = `${backendUrl}/api/v1/auth/google/mobile-callback`
 
-    // Encode returnUrl into state so we know where to redirect after
-    const state = Buffer.from(JSON.stringify({ returnUrl })).toString('base64url')
+    // Encode returnUrl, mode, and role into state
+    const state = Buffer.from(JSON.stringify({ returnUrl, mode, role })).toString('base64url')
 
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
@@ -278,11 +280,15 @@ export const googleMobileCallback = async (req: Request, res: Response, next: Ne
   try {
     const { code, state, error: oauthError } = req.query as Record<string, string>
 
-    // Decode returnUrl from state
+    // Decode returnUrl, mode, and role from state
     let returnUrl = 'gramchain://'
+    let mode = 'login'
+    let role = 'BORROWER'
     try {
       const parsed = JSON.parse(Buffer.from(state || '', 'base64url').toString())
       returnUrl = parsed.returnUrl || returnUrl
+      mode = parsed.mode || 'login'
+      role = parsed.role || 'BORROWER'
     } catch { /* use default */ }
 
     if (oauthError || !code) {
@@ -318,8 +324,8 @@ export const googleMobileCallback = async (req: Request, res: Response, next: Ne
       return
     }
 
-    // Verify the ID token and login/register user
-    const result = await AuthService.verifyGoogleSignIn(tokenData.id_token)
+    // Verify the ID token and login/register user based on mode
+    const result = await AuthService.verifyGoogleSignIn(tokenData.id_token, mode as 'login' | 'signup', role as 'BORROWER' | 'LENDER')
 
     // Redirect back to the mobile app with tokens
     const successUrl = new URL(returnUrl)

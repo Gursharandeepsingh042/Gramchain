@@ -61,7 +61,7 @@ export default function SignupScreen() {
     try {
       await WebBrowser.dismissBrowser()
       const baseUrl = getApiBaseUrl()
-      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}`
+      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}&mode=signup&role=BORROWER`
       console.log('[Google Auth][signup] Opening:', startUrl)
 
       const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl)
