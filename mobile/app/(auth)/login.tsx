@@ -76,7 +76,14 @@ export default function LoginScreen() {
         const url = new URL(result.url)
         const errorParam = url.searchParams.get('error')
         if (errorParam) {
-          setError(`Google sign-in failed: ${errorParam}`)
+          // Display user-friendly error message
+          if (errorParam.includes('already exists')) {
+            setError('An account with this Google email already exists. Please login instead.')
+          } else if (errorParam.includes('not found')) {
+            setError('No account registered with this Google email. Please sign up first.')
+          } else {
+            setError(`Google sign-in failed: ${errorParam}`)
+          }
           return
         }
 

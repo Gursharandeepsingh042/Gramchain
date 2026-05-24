@@ -325,7 +325,17 @@ export const googleMobileCallback = async (req: Request, res: Response, next: Ne
     }
 
     // Verify the ID token and login/register user based on mode
-    const result = await AuthService.verifyGoogleSignIn(tokenData.id_token, mode as 'login' | 'signup', role as 'BORROWER' | 'LENDER')
+    let result
+    try {
+      result = await AuthService.verifyGoogleSignIn(tokenData.id_token, mode as 'login' | 'signup', role as 'BORROWER' | 'LENDER')
+    } catch (error: any) {
+      // Handle auth errors and redirect back to app with error message
+      const errorUrl = new URL(returnUrl)
+      const errorMessage = error.message || 'Authentication failed'
+      errorUrl.searchParams.set('error', errorMessage)
+      res.redirect(errorUrl.toString())
+      return
+    }
 
     // Redirect back to the mobile app with tokens
     const successUrl = new URL(returnUrl)
