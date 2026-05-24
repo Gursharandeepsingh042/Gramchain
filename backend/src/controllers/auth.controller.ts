@@ -330,9 +330,11 @@ export const googleMobileCallback = async (req: Request, res: Response, next: Ne
       result = await AuthService.verifyGoogleSignIn(tokenData.id_token, mode as 'login' | 'signup', role as 'BORROWER' | 'LENDER')
     } catch (error: any) {
       // Handle auth errors and redirect back to app with error message
+      console.error('[Google Auth] Error during verifyGoogleSignIn:', error.message)
       const errorUrl = new URL(returnUrl)
       const errorMessage = error.message || 'Authentication failed'
       errorUrl.searchParams.set('error', errorMessage)
+      console.log('[Google Auth] Redirecting to error URL:', errorUrl.toString())
       res.redirect(errorUrl.toString())
       return
     }
