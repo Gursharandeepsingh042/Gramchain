@@ -55,6 +55,7 @@ export default function SignupScreen() {
     setLoading(true)
     setError('')
     try {
+      await WebBrowser.dismissBrowser()
       const baseUrl = getApiBaseUrl()
       const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}`
       console.log('[Google Auth][signup] Opening:', startUrl)
