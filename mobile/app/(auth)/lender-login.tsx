@@ -59,7 +59,6 @@ export default function LenderLoginScreen() {
     setLoading(true)
     setError('')
     try {
-      await WebBrowser.dismissBrowser()
       const baseUrl = getApiBaseUrl()
       const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}&mode=login&role=LENDER`
 
