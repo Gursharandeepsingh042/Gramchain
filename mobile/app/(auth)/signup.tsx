@@ -15,6 +15,7 @@ import { radius, shadows, getScreenPadding, FORM_MAX_WIDTH } from '@/constants/d
 import { startPhoneOtp, getActivePhoneSession } from '@/services/phoneAuth'
 import * as WebBrowser from 'expo-web-browser'
 import { makeRedirectUri } from 'expo-auth-session'
+import Constants from 'expo-constants'
 import { GoogleLogo } from '@/components/ui/GoogleLogo'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -49,7 +50,11 @@ export default function SignupScreen() {
   )
 
   // Google Auth — backend-proxied flow (no auth.expo.io dependency)
-  const returnUrl = makeRedirectUri({ scheme: 'gramchain' })
+  // Expo Go needs exp:// URL, native builds use gramchain://
+  const isExpoGo = Constants.appOwnership === 'expo'
+  const returnUrl = isExpoGo
+    ? makeRedirectUri({ scheme: 'exp' })
+    : makeRedirectUri({ scheme: 'gramchain' })
 
   const handleGoogleSignup = async () => {
     setLoading(true)
