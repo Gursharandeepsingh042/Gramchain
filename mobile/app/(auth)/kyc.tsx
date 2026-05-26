@@ -323,6 +323,16 @@ export default function KycScreen() {
                 size="xl"
                 style={{ marginTop: 16 }}
               />
+
+              <TouchableOpacity
+                onPress={handleFetchAadhaar}
+                disabled={loading}
+                style={{ marginTop: 20, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.primary[600], fontSize: 14, fontWeight: '600' }}>
+                  Resend OTP
+                </Text>
+              </TouchableOpacity>
             </View>
           </>
         )}

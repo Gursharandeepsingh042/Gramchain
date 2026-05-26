@@ -60,7 +60,8 @@ export default function LenderLoginScreen() {
     setError('')
     try {
       const baseUrl = getApiBaseUrl()
-      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}&mode=login&role=LENDER`
+      // Let backend determine the role based on the user's account
+      const startUrl = `${baseUrl}/auth/google/mobile-start?returnUrl=${encodeURIComponent(returnUrl)}&mode=login`
 
       const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl)
 
@@ -92,12 +93,13 @@ export default function LenderLoginScreen() {
           return
         }
 
+        // Trust the role returned by the backend
         const user = {
           id: userId,
           name: userName || '',
           email: userEmail || '',
           kycStatus: kycStatus || '',
-          role: 'LENDER',
+          role: userRole || 'BORROWER', // Fallback to BORROWER if backend doesn't return role
         } as any
 
         setAuth(accessToken, refreshToken, user)

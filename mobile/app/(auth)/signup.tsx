@@ -214,7 +214,7 @@ export default function SignupScreen() {
         // this enables future logins via phone-or-email + password.
         // Email is sent to the backend via the formData captured below; Firebase
         // email-linking is not required since auth is anchored to the phone identity.
-        const res = await authApi.verifyFirebase(idToken, formData.fullName, formData.groupCode, formData.password);
+        const res = await authApi.verifyFirebase(idToken, formData.fullName, formData.groupCode, formData.password, formData.email);
         const { accessToken, refreshToken, user } = res.data.data
         setAuth(accessToken, refreshToken, user)
         router.replace('/kyc')

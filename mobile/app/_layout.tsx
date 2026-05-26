@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, memo, useState } from 'react'
-import { View, Animated, Text, StyleSheet, Image, InteractionManager } from 'react-native'
+import { View, Animated, Text, StyleSheet, InteractionManager } from 'react-native'
 import { Stack } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
@@ -12,6 +12,7 @@ import { I18nextProvider } from 'react-i18next'
 import * as SplashScreen from 'expo-splash-screen'
 import Constants from 'expo-constants'
 import i18n from '@/i18n'
+import { Video, ResizeMode, type AVPlaybackStatus } from 'expo-av'
 import { LinearGradient } from 'expo-linear-gradient'
 import { colors } from '@/constants/colors'
 
@@ -51,14 +52,15 @@ const OfflineBanner = memo(() => {
 })
 
 export default function RootLayout() {
-  const { token, isKycComplete, kycSkipped, user } = useAuthStore()
+  const { token, isKycComplete, kycSkipped, user, hasHydrated } = useAuthStore()
 
   const isLender = user?.role === 'LENDER'
 
   const [isAppReady, setIsAppReady] = useState(false)
   const [showSplashOverlay, setShowSplashOverlay] = useState(true)
+  const [isAnimationDone, setIsAnimationDone] = useState(false)
   const splashOpacity = useRef(new Animated.Value(1)).current
-  const splashScale = useRef(new Animated.Value(1.08)).current
+  const splashVideoRef = useRef<Video | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -86,24 +88,16 @@ export default function RootLayout() {
   }, [])
 
   useEffect(() => {
-    if (!isAppReady) return
+    if (!isAppReady || !isAnimationDone) return
 
     let isMounted = true
 
-    Animated.parallel([
-      Animated.spring(splashScale, {
-        toValue: 1,
-        friction: 6,
-        tension: 120,
-        useNativeDriver: true,
-      }),
-      Animated.timing(splashOpacity, {
-        toValue: 0,
-        duration: 360,
-        delay: 120,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
+    Animated.timing(splashOpacity, {
+      toValue: 0,
+      duration: 360,
+      delay: 120,
+      useNativeDriver: true,
+    }).start(() => {
       if (isMounted) {
         setShowSplashOverlay(false)
       }
@@ -112,7 +106,7 @@ export default function RootLayout() {
     return () => {
       isMounted = false
     }
-  }, [isAppReady, splashOpacity, splashScale])
+  }, [isAppReady, isAnimationDone, splashOpacity])
 
   useEffect(() => {
     // Future: Initialize background sync when services are production-ready
@@ -124,23 +118,39 @@ export default function RootLayout() {
     await SplashScreen.hideAsync().catch(() => { /* already hidden */ })
   }, [isAppReady])
 
+  const handlePlaybackStatus = useCallback((status: AVPlaybackStatus) => {
+    if (!('isLoaded' in status) || !status.isLoaded) return
+    if (status.didJustFinish) {
+      setIsAnimationDone(true)
+    }
+  }, [])
+
+  const handleVideoError = useCallback((error: unknown) => {
+    console.error('Splash animation failed to play', error)
+    setIsAnimationDone(true)
+  }, [])
+
   return (
     <ErrorBoundary>
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <I18nextProvider i18n={i18n}>
           <QueryClientProvider client={queryClient}>
             <SafeAreaProvider>
-              <StatusBar style={isLender ? 'light' : 'dark'} />
+              <StatusBar style={showSplashOverlay ? 'light' : (isLender ? 'light' : 'dark')} />
               <OfflineBanner />
               <Stack screenOptions={{ headerShown: false }}>
-                {token ? (
-                  isLender ? (
-                    // Lender flow — skip KYC for now, go straight to lender dashboard
-                    <Stack.Screen name="(lender)" />
-                  ) : isKycComplete || kycSkipped ? (
-                    <Stack.Screen name="(tabs)" />
+                {hasHydrated ? (
+                  token ? (
+                    isLender ? (
+                      // Lender flow — skip KYC for now, go straight to lender dashboard
+                      <Stack.Screen name="(lender)" />
+                    ) : isKycComplete || kycSkipped ? (
+                      <Stack.Screen name="(tabs)" />
+                    ) : (
+                      <Stack.Screen name="(auth)/kyc" />
+                    )
                   ) : (
-                    <Stack.Screen name="(auth)/kyc" />
+                    <Stack.Screen name="(auth)" />
                   )
                 ) : (
                   <Stack.Screen name="(auth)" />
@@ -153,17 +163,22 @@ export default function RootLayout() {
           <Animated.View style={[styles.splashOverlay, { opacity: splashOpacity }]}
             pointerEvents="auto">
             <LinearGradient
-              colors={colors.gradient.primaryDeep}
+              colors={colors.gradient.logoSoft}
               style={styles.splashGradient}
-            />
-            <Animated.View style={[styles.splashContent, { transform: [{ scale: splashScale }] }]}
-              pointerEvents="none">
-              <View style={styles.splashCircle}>
-                <Image source={require('../assets/icon.png')} style={styles.splashLogo} />
-              </View>
-              <Text style={styles.splashTitle}>GramChain</Text>
-              <Text style={styles.splashSubtitle}>Grow Together with Trust</Text>
-            </Animated.View>
+            >
+              <Video
+                ref={splashVideoRef}
+                style={styles.splashVideo}
+                source={require('../assets/animations/animation2.mp4')}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay
+                isMuted
+                isLooping={false}
+                onPlaybackStatusUpdate={handlePlaybackStatus}
+                onError={handleVideoError}
+                useNativeControls={false}
+              />
+            </LinearGradient>
           </Animated.View>
         )}
       </View>
@@ -174,45 +189,20 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   splashOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary[900],
+    backgroundColor: '#0e232f',
     zIndex: 9999,
   },
   splashGradient: {
     ...StyleSheet.absoluteFillObject,
-  },
-  splashContent: {
     alignItems: 'center',
-    gap: 16,
-  },
-  splashCircle: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    backgroundColor: 'rgba(255,255,255,0.12)',
     justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
-  splashLogo: {
-    width: 88,
-    height: 88,
-    resizeMode: 'contain',
-  },
-  splashTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: colors.surface,
-    letterSpacing: 0.8,
-  },
-  splashSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.78)',
-    textAlign: 'center',
-    maxWidth: 260,
-    lineHeight: 20,
+  splashVideo: {
+    width: '150%',
+    maxWidth: 700,
+    aspectRatio: 1,
   },
   offlineBanner: {
     position: 'absolute',

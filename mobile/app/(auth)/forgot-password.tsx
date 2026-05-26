@@ -40,14 +40,10 @@ export default function ForgotPasswordScreen() {
     setLoading(true)
     setError('')
     try {
-      const res = await authApi.checkEmail(trimmed)
-      if (res.data.data.exists) {
-        setStep(2)
-      } else {
-        setError('Account does not exist. Please check your email or sign up.')
-      }
+      await authApi.forgotPassword(trimmed)
+      setStep(2)
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Unable to verify account. Please try again.')
+      setError(err.response?.data?.error?.message || 'Unable to send reset email. Please try again.')
     } finally {
       setLoading(false)
     }

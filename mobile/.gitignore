@@ -13,3 +13,5 @@ yarn-error.log
 yarn-debug.log
 .pnp.*
 .DS_Store
+*storybook.log
+storybook-static

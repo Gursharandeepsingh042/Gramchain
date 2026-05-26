@@ -12,6 +12,7 @@ import Constants from 'expo-constants'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
 import { Alert } from 'react-native'
+import axios from 'axios'
 import { startPhoneOtp } from '@/services/phoneAuth'
 import { authApi, getApiBaseUrl } from '@/services/api'
 import { useAuthStore } from '@/store/auth.store'
@@ -31,10 +32,18 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [hasSavedCredentials, setHasSavedCredentials] = useState(false)
 
   // Entrance animations
   const headerAnim = useRef(new Animated.Value(0)).current
   const formAnim = useRef(new Animated.Value(0)).current
+
+  // Check if saved refresh token exists on mount
+  useEffect(() => {
+    SecureStore.getItemAsync('saved_refresh_token').then(token => {
+      setHasSavedCredentials(!!token)
+    })
+  }, [])
 
   useEffect(() => {
     Animated.stagger(150, [
@@ -159,9 +168,9 @@ export default function LoginScreen() {
           const { accessToken, refreshToken, user } = res.data.data
           setAuth(accessToken, refreshToken, user)
 
-          // Save to secure store for biometric login
-          await SecureStore.setItemAsync('saved_email', email)
-          await SecureStore.setItemAsync('saved_password', password)
+          // Save refresh token to secure store for biometric login (more secure than storing password)
+          await SecureStore.setItemAsync('saved_refresh_token', refreshToken)
+          setHasSavedCredentials(true)
 
           router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
         } catch (err: any) {
@@ -190,7 +199,7 @@ export default function LoginScreen() {
       }
 
       const promptMessage = Platform.OS === 'ios' ? 'Login with Face ID' : 'Login with Biometric'
-      
+
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage,
         fallbackLabel: 'Use Passcode',
@@ -199,17 +208,27 @@ export default function LoginScreen() {
 
       if (result.success) {
         setLoading(true)
-        const savedEmail = await SecureStore.getItemAsync('saved_email')
-        const savedPassword = await SecureStore.getItemAsync('saved_password')
+        const savedRefreshToken = await SecureStore.getItemAsync('saved_refresh_token')
 
-        if (savedEmail && savedPassword) {
+        if (savedRefreshToken) {
             try {
-                const res = await authApi.loginWithPassword(savedEmail, savedPassword)
-                const { accessToken, refreshToken, user } = res.data.data
-                setAuth(accessToken, refreshToken, user)
+                // Use refresh token to get new access token (more secure than storing password)
+                const baseURL = getApiBaseUrl()
+                const res = await axios.post(`${baseURL}/auth/refresh`, { refreshToken: savedRefreshToken })
+                const { accessToken, refreshToken: newRefreshToken, user } = res.data.data
+
+                // Update store with new tokens
+                setAuth(accessToken, newRefreshToken, user)
+
+                // Update saved refresh token
+                await SecureStore.setItemAsync('saved_refresh_token', newRefreshToken)
+
                 router.replace(user.kycStatus === 'VERIFIED' ? '/' : '/kyc')
             } catch (err: any) {
-                setError(err.response?.data?.error?.message || 'Biometric login failed server-side.')
+                // If refresh fails, clear the saved token and ask user to login with password
+                await SecureStore.deleteItemAsync('saved_refresh_token')
+                setError('Session expired. Please login with your password.')
+                Alert.alert('Session Expired', 'Please login with your password to enable biometric login again.')
             }
         } else {
             Alert.alert('Setup Required', 'Please login with your password once to enable Biometric login.')
@@ -344,6 +363,7 @@ export default function LoginScreen() {
                 </View>
             </TouchableOpacity>
 
+            {hasSavedCredentials && (
             <TouchableOpacity 
                 style={styles.biometricBtn}
                 onPress={handleBiometricLogin}
@@ -353,6 +373,7 @@ export default function LoginScreen() {
                     {Platform.OS === 'ios' ? 'Login with Face ID' : 'Login with Fingerprint'}
                 </Text>
             </TouchableOpacity>
+            )}
 
             <View style={styles.divider}>
                 <View style={styles.line} />

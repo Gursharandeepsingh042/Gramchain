@@ -1,3 +1,7 @@
+const {
+  withStorybook,
+} = require('@storybook/react-native/withStorybook');
+
 const { getDefaultConfig } = require('expo/metro-config');
 
 /** @type {import('expo/metro-config').MetroConfig} */
@@ -10,4 +14,4 @@ config.resolver.assetExts.push('tflite');
 config.resolver.unstable_enablePackageExports = false;
 config.resolver.sourceExts.push('cjs');
 
-module.exports = config;
+module.exports = withStorybook(config);

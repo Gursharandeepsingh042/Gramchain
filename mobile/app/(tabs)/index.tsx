@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [unreadCount, setUnreadCount]       = useState(0)
   const [approvingLoan, setApprovingLoan]     = useState<string | null>(null)
   const [votingDissolveNotif, setVotingDN]   = useState<string | null>(null)
+  const [creditScore, setCreditScore]       = useState<number | null>(null)
+  const [totalBorrowed, setTotalBorrowed]   = useState(0)
 
   // Staggered entrance animations
   const greetAnim   = useRef(new Animated.Value(0)).current
@@ -65,6 +67,17 @@ export default function Dashboard() {
         notificationApi.getAll().catch(() => null),
       ])
       setMyLoans(loansRes.data.data)
+      
+      // Calculate total borrowed from all loans
+      const total = loansRes.data.data.reduce((sum: number, loan: any) => sum + (loan.amount || 0), 0)
+      setTotalBorrowed(total)
+      
+      // Get credit score from latest loan if available
+      if (loansRes.data.data.length > 0) {
+        const latestLoan = loansRes.data.data[0]
+        setCreditScore(latestLoan.creditScore || null)
+      }
+      
       if (shgRes.data.data.length > 0) {
         setShgData(shgRes.data.data[0].shg)
       }
@@ -252,13 +265,13 @@ export default function Dashboard() {
           <StatCard
             icon="📊"
             label="Credit Score"
-            value="N/A"
+            value={creditScore ? creditScore.toString() : 'N/A'}
           />
           <View style={{ width: 12 }} />
           <StatCard
             icon="💸"
             label="Total Borrowed"
-            value="₹0"
+            value={`₹${totalBorrowed.toLocaleString('en-IN')}`}
             subtext="Lifetime"
           />
         </Animated.View>
@@ -270,7 +283,7 @@ export default function Dashboard() {
               {t('dashboard.activeLoan', { defaultValue: 'Active Loan' })}
             </Text>
             {activeLoan && (
-              <TouchableOpacity onPress={() => router.push('/(tabs)/borrow')}>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/borrow')} accessibilityLabel="View all loans">
                 <Text style={styles.seeAll}>View All →</Text>
               </TouchableOpacity>
             )}
@@ -309,7 +322,7 @@ export default function Dashboard() {
             <QuickAction
               icon="📊"
               label={t('dashboard.history', { defaultValue: 'History' })}
-              onPress={() => {}}
+              onPress={() => router.push('/(tabs)/borrow')}
               color={colors.info[600]}
             />
             <QuickAction
@@ -346,11 +359,11 @@ export default function Dashboard() {
             <Text style={styles.notifModalTitle}>Notifications</Text>
             <View style={styles.notifModalActions}>
               {unreadCount > 0 && (
-                <TouchableOpacity onPress={handleMarkAllRead} style={styles.markReadBtn}>
+                <TouchableOpacity onPress={handleMarkAllRead} style={styles.markReadBtn} accessibilityLabel="Mark all notifications as read">
                   <Text style={styles.markReadText}>Mark all read</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={() => setNotifPanel(false)} style={styles.notifCloseBtn}>
+              <TouchableOpacity onPress={() => setNotifPanel(false)} style={styles.notifCloseBtn} accessibilityLabel="Close notifications">
                 <Ionicons name="close" size={20} color={colors.text.primary} />
               </TouchableOpacity>
             </View>
@@ -387,6 +400,7 @@ export default function Dashboard() {
                       style={[styles.approveBtn, approvingLoan === notif.data.loanId && { opacity: 0.6 }]}
                       onPress={() => handleApproveLoan(notif.data.loanId, notif.id)}
                       disabled={approvingLoan === notif.data.loanId}
+                      accessibilityLabel="Approve loan"
                     >
                       <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
                       <Text style={styles.approveBtnText}>
@@ -400,6 +414,7 @@ export default function Dashboard() {
                         style={[styles.dissolveYesBtn, votingDissolveNotif === notif.id + '-yes' && { opacity: 0.6 }]}
                         onPress={() => handleVoteFromNotif(notif.data.shgId, true, notif.id)}
                         disabled={!!votingDissolveNotif}
+                        accessibilityLabel="Vote yes to dissolve group"
                       >
                         <Text style={styles.dissolveVoteBtnText}>✅ Yes, Dissolve</Text>
                       </TouchableOpacity>
@@ -407,6 +422,7 @@ export default function Dashboard() {
                         style={[styles.dissolveNoBtn, votingDissolveNotif === notif.id + '-no' && { opacity: 0.6 }]}
                         onPress={() => handleVoteFromNotif(notif.data.shgId, false, notif.id)}
                         disabled={!!votingDissolveNotif}
+                        accessibilityLabel="Vote no to keep group"
                       >
                         <Text style={styles.dissolveVoteBtnText}>🚫 No, Keep</Text>
                       </TouchableOpacity>

@@ -6,8 +6,8 @@ import { colors } from '@/constants/colors'
 import { shadows } from '@/constants/design'
 
 // Tab icon component with active indicator dot
-const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
-  <View style={styles.iconContainer}>
+const TabIcon = ({ emoji, focused, label }: { emoji: string; focused: boolean; label: string }) => (
+  <View style={styles.iconContainer} accessibilityLabel={label} accessibilityRole="button">
     <Text style={[styles.iconEmoji, focused && styles.iconEmojiActive]}>{emoji}</Text>
     {focused && <View style={styles.activeDot} />}
   </View>
@@ -31,35 +31,35 @@ export default function TabLayout() {
         name="index"
         options={{
           title: t('tabs.home', { defaultValue: 'Home' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} label="Home" />,
         }}
       />
       <Tabs.Screen
         name="borrow"
         options={{
           title: t('tabs.borrow', { defaultValue: 'Borrow' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💸" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💸" focused={focused} label="Borrow" />,
         }}
       />
       <Tabs.Screen
         name="group"
         options={{
           title: t('tabs.group', { defaultValue: 'Group' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👥" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👥" focused={focused} label="Group" />,
         }}
       />
       <Tabs.Screen
         name="schemes"
         options={{
           title: t('tabs.schemes', { defaultValue: 'Schemes' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏛️" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🏛️" focused={focused} label="Schemes" />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('tabs.profile', { defaultValue: 'Profile' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} label="Profile" />,
         }}
       />
     </Tabs>

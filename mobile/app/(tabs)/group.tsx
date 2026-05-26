@@ -31,6 +31,7 @@ export default function GroupScreen() {
   const [joinCode, setJoinCode] = useState('')
   const [createData, setCreateData] = useState({ name: '', district: '', state: '' })
   const [processing, setProcessing] = useState(false)
+  const [modalError, setModalError] = useState('')
 
   // Geo data
   const [states, setStates] = useState<string[]>([])
@@ -147,6 +148,7 @@ export default function GroupScreen() {
 
   const handleJoin = async () => {
     if (!joinCode) return Alert.alert('Error', 'Please enter a joining code')
+    setModalError('')
     setProcessing(true)
     try {
       await shgApi.joinByCode(joinCode)
@@ -155,7 +157,7 @@ export default function GroupScreen() {
       setJoinCode('')
       loadShgs()
     } catch (error: any) {
-      Alert.alert('Error', error?.response?.data?.error?.message || 'Failed to join group')
+      setModalError(error?.response?.data?.error?.message || 'Failed to join group')
     } finally {
       setProcessing(false)
     }
@@ -165,6 +167,7 @@ export default function GroupScreen() {
     if (!createData.name || !createData.district || !createData.state) {
       return Alert.alert('Error', 'Please fill in all fields')
     }
+    setModalError('')
     setProcessing(true)
     try {
       await shgApi.createGroup(createData)
@@ -173,7 +176,7 @@ export default function GroupScreen() {
       setCreateData({ name: '', district: '', state: '' })
       loadShgs()
     } catch (error: any) {
-      Alert.alert('Error', error?.response?.data?.error?.message || 'Failed to create group')
+      setModalError(error?.response?.data?.error?.message || 'Failed to create group')
     } finally {
       setProcessing(false)
     }
@@ -819,12 +822,13 @@ export default function GroupScreen() {
                   placeholder="e.g. ABC123"
                   placeholderTextColor={colors.gray[400]}
                   value={joinCode}
-                  onChangeText={setJoinCode}
+                  onChangeText={(v) => { setJoinCode(v); setModalError('') }}
                   autoCapitalize="characters"
                   maxLength={8}
                 />
+                {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.cancelBtnRow} onPress={() => setShowJoinModal(false)}>
+                  <TouchableOpacity style={styles.cancelBtnRow} onPress={() => { setShowJoinModal(false); setModalError('') }}>
                     <Text style={styles.cancelBtnText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.submitBtn} onPress={handleJoin} disabled={processing}>
@@ -846,7 +850,7 @@ export default function GroupScreen() {
                     placeholder="Group Name *"
                     placeholderTextColor={colors.gray[400]}
                     value={createData.name}
-                    onChangeText={(v) => setCreateData(prev => ({ ...prev, name: v }))}
+                    onChangeText={(v) => { setCreateData(prev => ({ ...prev, name: v })); setModalError('') }}
                   />
 
                   <Text style={styles.dropdownLabel}>State *</Text>
@@ -880,6 +884,7 @@ export default function GroupScreen() {
                         setShowCreateModal(false)
                         setShowStateDropdown(false)
                         setShowDistrictDropdown(false)
+                        setModalError('')
                       }}
                     >
                       <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -888,6 +893,7 @@ export default function GroupScreen() {
                       <Text style={styles.submitBtnText}>{processing ? 'Creating...' : 'Create Group'}</Text>
                     </TouchableOpacity>
                   </View>
+                  {modalError ? <Text style={styles.modalErrorText}>{modalError}</Text> : null}
                 </View>
               </ScrollView>
             </View>
@@ -1257,6 +1263,11 @@ const styles = StyleSheet.create({
   cancelBtnRow: {
     paddingVertical: 10,
     paddingHorizontal: 16,
+  },
+  modalErrorText: {
+    color: colors.danger[600],
+    fontSize: 13,
+    marginBottom: 12,
   },
   cancelBtnText: {
     color: colors.gray[500],

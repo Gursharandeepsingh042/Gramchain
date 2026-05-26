@@ -12,8 +12,8 @@ const LENDER_INACTIVE = colors.gray[500]
 const LENDER_DOT = colors.info[500]
 
 // Tab icon component with active indicator dot
-const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
-  <View style={styles.iconContainer}>
+const TabIcon = ({ emoji, focused, label }: { emoji: string; focused: boolean; label: string }) => (
+  <View style={styles.iconContainer} accessibilityLabel={label} accessibilityRole="button">
     <Text style={[styles.iconEmoji, focused && styles.iconEmojiActive]}>{emoji}</Text>
     {focused && <View style={styles.activeDot} />}
   </View>
@@ -38,28 +38,28 @@ export default function LenderTabLayout() {
         name="portfolio"
         options={{
           title: 'Portfolio',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💎" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💎" focused={focused} label="Portfolio" />,
         }}
       />
       <Tabs.Screen
         name="invest"
         options={{
           title: 'Invest',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} label="Invest" />,
         }}
       />
       <Tabs.Screen
         name="impact"
         options={{
           title: 'Impact',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🌍" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🌍" focused={focused} label="Impact" />,
         }}
       />
       <Tabs.Screen
         name="lender-profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} label="Profile" />,
         }}
       />
     </Tabs>

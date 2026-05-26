@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react'
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity, Image, useWindowDimensions
 } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
@@ -34,15 +35,13 @@ export default function WelcomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Visual Background */}
-      <View style={styles.bgWrapper}>
-          <Image 
-            source={{ uri: 'https://images.unsplash.com/photo-1590650516494-0c8e4a4dd67e?q=80&w=2071&auto=format&fit=crop' }} // Agriculture/Trust image
-            style={styles.bgImage}
-            blurRadius={2}
-          />
-          <View style={styles.overlay} />
-      </View>
+      {/* Visual Background - Gradient instead of remote image for offline support */}
+      <LinearGradient
+        colors={[colors.primary[900], colors.primary[700], colors.primary[500]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bgGradient}
+      />
 
       <SafeAreaView style={[styles.safe, { paddingHorizontal: horizontalPadding }]}>
         <View style={styles.topRow}>
@@ -111,18 +110,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.primary[900],
   },
-  bgWrapper: {
+  bgGradient: {
     ...StyleSheet.absoluteFillObject,
-  },
-  bgImage: {
-    width: '100%',
-    height: '100%',
-    opacity: 0.6,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.primary[900],
-    opacity: 0.5,
   },
   safe: {
     flex: 1,

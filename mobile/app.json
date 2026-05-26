@@ -10,11 +10,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0a3d1e"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -27,6 +22,7 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
+              "gramchain",
               "com.gramchain.gramchain"
             ]
           },

@@ -47,6 +47,7 @@ export default function BorrowScreen() {
   const [score, setScore]     = useState<number | null>(null)
   const [scoreLoading, setScoreLoading] = useState(false)
   const [scoreCached, setScoreCached]   = useState(false)
+  const [scoreError, setScoreError]     = useState<string | null>(null)
   const [step, setStep]       = useState<1 | 2 | 3>(1)
   const [refreshing, setRefreshing]     = useState(false)
 
@@ -62,6 +63,7 @@ export default function BorrowScreen() {
     if (!amount || parseInt(amount) <= 0 || !shgId) return
     setScoreLoading(true)
     setScore(null)
+    setScoreError(null)
     try {
       const res = await loanApi.getCreditScore({
         shgId,
@@ -70,10 +72,11 @@ export default function BorrowScreen() {
       })
       setScore(res.data?.data?.score ?? 720)
       setScoreCached(!!res.data?.data?.cached)
-    } catch {
-      // Fallback: if ML service is down, use a sensible default
-      // so the user can still submit (score will be recalculated server-side)
-      setScore(700)
+    } catch (err: any) {
+      // Don't use fallback score - show error to user
+      // This prevents unqualified borrowers from submitting when ML is down
+      setScoreError('Unable to fetch credit score. Please try again or contact support.')
+      setScore(null)
       setScoreCached(false)
     } finally {
       setScoreLoading(false)
@@ -124,6 +127,14 @@ export default function BorrowScreen() {
   const handleApply = async () => {
     if (!amount || !shgId) {
       Alert.alert('Error', 'Please enter amount and ensure you are in an SHG.')
+      return
+    }
+    if (scoreError) {
+      Alert.alert('Error', scoreError)
+      return
+    }
+    if (!score) {
+      Alert.alert('Error', 'Please wait for credit score to be calculated.')
       return
     }
     setLoading(true)
@@ -249,6 +260,13 @@ export default function BorrowScreen() {
               <Divider label="AI Credit Assessment" />
               <CreditScoreGauge score={score} />
 
+              {/* Score error message */}
+              {scoreError && (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{scoreError}</Text>
+                </View>
+              )}
+
               {/* Refresh score control */}
               <View style={styles.scoreMetaRow}>
                 <Text style={styles.scoreMetaText}>
@@ -277,6 +295,7 @@ export default function BorrowScreen() {
                     label="Review Loan Terms →"
                     onPress={() => setStep(3)}
                     size="lg"
+                    disabled={!score || !!scoreError}
                   />
                 </View>
               )}
@@ -584,5 +603,18 @@ const styles = StyleSheet.create({
     fontSize:   12,
     fontWeight: '700',
     color:      colors.primary[700],
+  },
+  errorBox: {
+    backgroundColor: colors.danger[50],
+    borderRadius: radius.md,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.danger[100],
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.danger[700],
+    lineHeight: 18,
   },
 })

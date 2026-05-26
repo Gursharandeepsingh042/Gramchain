@@ -9,10 +9,12 @@ interface AuthState {
   user: User | null
   isKycComplete: boolean
   kycSkipped: boolean
+  hasHydrated: boolean
   setAuth: (token: string, refreshToken: string, user: User) => void
   logout: () => void
   completeKyc: (walletAddress?: string) => void
   skipKyc: () => void
+  setHasHydrated: (state: boolean) => void
 }
 
 const zustandStorage = {
@@ -29,6 +31,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isKycComplete: false,
       kycSkipped: false,
+      hasHydrated: false,
       setAuth: (token, refreshToken, user) => set((state) => ({
         token,
         refreshToken,
@@ -49,10 +52,14 @@ export const useAuthStore = create<AuthState>()(
         } : null
       })),
       skipKyc: () => set({ kycSkipped: true }),
+      setHasHydrated: (state) => set({ hasHydrated: state }),
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => zustandStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
   )
 )

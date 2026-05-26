@@ -104,16 +104,16 @@ export const authApi = {
   register: (data: { phone: string; name: string; email: string; password?: string }) =>
     api.post('/auth/register', data),
   googleSignIn: (idToken: string) => api.post('/auth/google', { idToken }),
-  verifyFirebase: (idToken: string, name?: string, groupCode?: string, password?: string, role?: 'BORROWER' | 'LENDER') =>
-    api.post('/auth/firebase', { idToken, name, groupCode, password, role }),
+  verifyFirebase: (idToken: string, name?: string, groupCode?: string, password?: string, email?: string, role?: 'BORROWER' | 'LENDER') =>
+    api.post('/auth/firebase', { idToken, name, groupCode, password, email, role }),
   checkPhone: (phone: string) => api.get<{ data: { exists: boolean; hasName: boolean } }>(`/auth/check-phone?phone=${phone}`),
   checkEmail: (email: string) => api.get<{ data: { exists: boolean } }>(`/auth/check-email?email=${encodeURIComponent(email)}`),
   setPassword: (password: string) => api.post('/auth/set-password', { password }),
+  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
   getMe: () => api.get('/auth/me'),
   /** N1: Server-side logout — invalidates refresh tokens & clears FCM token. */
   logout: () => api.post('/auth/logout'),
-  // TODO: Backend endpoint not implemented yet - uncomment when backend adds /user/profile PATCH endpoint
-  // updateProfile: (data: { name?: string; walletAddress?: string }) => api.patch('/user/profile', data),
+  updateProfile: (data: { name?: string; walletAddress?: string }) => api.patch('/user/profile', data),
 }
 
 export const loanApi = {

@@ -94,6 +94,7 @@ export const colors = {
     sky:           ['#bae6fd', '#7dd3fc'],           // Light blue
     onboarding1:   ['#f0fdf4', '#dcfce7'],
     onboarding2:   ['#fffbeb', '#fef3c7'],
+    logoSoft:      ['#0e232f', '#0e232f'],
   },
 
   // ─── Score Colors (Credit Gauge) ────────────────────────────

@@ -26,13 +26,14 @@ export const getRnAuth = () => {
 // Configuration derived from google-services.json
 // IMPORTANT: apiKey must match the Android API key from google-services.json
 // for native Phone Auth to work. The web API key is different and won't work on Android.
+// Falls back to hardcoded values for development compatibility.
 const firebaseConfig = {
-  apiKey: "AIzaSyC2dDFEBJcj5gJuVB9rYO2s8yIY68XIVCo",
-  authDomain: "gramchainn.firebaseapp.com",
-  projectId: "gramchainn",
-  storageBucket: "gramchainn.firebasestorage.app",
-  messagingSenderId: "51986108180",
-  appId: "1:51986108180:android:558278ad6455712bb9fc01",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyC2dDFEBJcj5gJuVB9rYO2s8yIY68XIVCo",
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "gramchainn.firebaseapp.com",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "gramchainn",
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "gramchainn.firebasestorage.app",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "51986108180",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:51986108180:android:558278ad6455712bb9fc01",
 };
 
 let app;

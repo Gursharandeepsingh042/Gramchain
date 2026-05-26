@@ -213,17 +213,11 @@ export default function ProfileScreen() {
     if (!editName.trim()) return Alert.alert('Error', 'Name cannot be empty')
     setEditLoading(true)
     try {
-      // TODO: Uncomment when backend implements /user/profile PATCH endpoint
-      // await authApi.updateProfile({ name: editName.trim() })
-      
-      // For now, just refresh user data from backend
-      const res = await authApi.getMe()
-      const updatedUser = res.data.data.user
-      useAuthStore.getState().setAuth(useAuthStore.getState().token!, useAuthStore.getState().refreshToken!, updatedUser)
-      Alert.alert('Success', 'Profile updated!')
+      await authApi.updateProfile({ name: editName })
+      Alert.alert('Success', 'Profile updated successfully!')
       setShowEditProfile(false)
     } catch (e: any) {
-      Alert.alert('Error', e.response?.data?.error?.message || 'Failed to update profile.')
+      Alert.alert('Error', e.response?.data?.error?.message || 'Failed to update profile')
     } finally {
       setEditLoading(false)
     }
