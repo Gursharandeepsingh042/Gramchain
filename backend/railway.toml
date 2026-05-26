@@ -1,9 +1,0 @@
-# Railway configuration for GramChain backend.
-# Build uses backend/Dockerfile (multi-stage, non-root). No nixpacks.
-# CMD is defined in the Dockerfile — do NOT set startCommand here or it will override the Dockerfile.
-
-[deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 300
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
