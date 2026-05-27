@@ -9,6 +9,8 @@ import geoRoutes from './geo.routes'
 import bankRoutes from './bank.routes'
 import notificationRoutes from './notification.routes'
 import paymentRoutes from './payment.routes'
+import userRoutes from './user.routes'
+import groupFundingRoutes from './group-funding.routes'
 import { authenticate } from '@/middleware/auth.middleware'
 import { isConnected, getSignerAddress } from '@/services/blockchain.service'
 
@@ -28,6 +30,8 @@ router.use('/shg', authenticate, shgRoutes)
 router.use('/loan', authenticate, loanRoutes)
 router.use('/kyc', authenticate, kycRoutes)
 router.use('/lender', authenticate, lenderRoutes)
+router.use('/user', authenticate, userRoutes)
+router.use('/funding', authenticate, groupFundingRoutes)
 
 // Public blockchain status (before protected routes)
 router.get('/blockchain/status', async (_req, res) => {

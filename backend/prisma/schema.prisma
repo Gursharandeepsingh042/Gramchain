@@ -78,6 +78,8 @@ enum NotificationType {
   GROUP_INVITE           // Invited to join a group
   DISSOLUTION_VOTE       // Group leader started dissolution vote
   KYC_REMINDER           // Reminder to complete KYC
+  GROUP_FUNDING_REQUEST  // SHG leader applied for group funding — sent to lenders
+  GROUP_FUNDING_APPROVED // Lender approved group funding
   GENERAL                // Generic notification
 }
 
@@ -109,8 +111,18 @@ model User {
   bankAccounts   BankAccount[]
   notifications  Notification[]
   paymentOrders  PaymentOrder[]
+  fundingRequests GroupFundingRequest[] @relation("FundingRequestor")
+  investments     LenderInvestment[] @relation("LenderInvestments")
 
   @@map("users")
+}
+
+enum FundingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULLY_FUNDED
+  DISBURSED
 }
 
 model SHGGroup {
@@ -131,6 +143,8 @@ model SHGGroup {
   loans            Loan[]
   meetings         Meeting[]
   dissolutionVotes DissolutionVote[]
+  fundingRequests  GroupFundingRequest[]
+  investments      LenderInvestment[] @relation("GroupInvestments")
 
   @@map("shg_groups")
 }
@@ -377,4 +391,54 @@ model PaymentOrder {
   @@index([userId, status, createdAt])
   @@index([refType, refId])
   @@map("payment_orders")
+}
+
+// ─────────────────────────────────────────────
+// Group Funding Models — for SHG group funding from lenders
+// ─────────────────────────────────────────────
+model GroupFundingRequest {
+  id              String        @id @default(cuid())
+  shgId           String
+  requestedBy     String        // userId of SHG leader
+  amount          Decimal       @db.Decimal(18, 2)
+  durationMonths  Int
+  purpose         String
+  minInvestment   Decimal       @db.Decimal(18, 2) // Minimum per lender
+  maxInvestment   Decimal       @db.Decimal(18, 2) // Maximum per lender (max 1 lakh)
+  signatureUrl    String?       // Leader signature image URL
+  termsAccepted   Boolean       @default(false)
+  status          FundingStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  shg      SHGGroup            @relation(fields: [shgId], references: [id])
+  requestor User                @relation("FundingRequestor", fields: [requestedBy], references: [id])
+  investments LenderInvestment[]
+
+  @@index([shgId, status])
+  @@index([status])
+  @@map("group_funding_requests")
+}
+
+model LenderInvestment {
+  id              String        @id @default(cuid())
+  fundingRequestId String
+  lenderId        String
+  shgId           String        // Direct link to SHG for easier querying
+  amount          Decimal       @db.Decimal(18, 2)
+  interestRateBps Int           // Interest rate in basis points
+  status          FundingStatus @default(PENDING)
+  approvedAt      DateTime?
+  txHash          String?       // Blockchain transaction hash
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  fundingRequest GroupFundingRequest @relation(fields: [fundingRequestId], references: [id])
+  lender         User                @relation("LenderInvestments", fields: [lenderId], references: [id])
+  shg            SHGGroup            @relation("GroupInvestments", fields: [shgId], references: [id])
+
+  @@index([fundingRequestId, status])
+  @@index([lenderId, status])
+  @@index([shgId, status])
+  @@map("lender_investments")
 }

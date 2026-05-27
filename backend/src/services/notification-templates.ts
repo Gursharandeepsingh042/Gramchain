@@ -40,6 +40,14 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationType, Record<'en' | 'hi'
     en: () => ({ title: 'KYC Pending', body: 'Please complete your KYC to unlock all features.' }),
     hi: () => ({ title: 'KYC लंबित', body: 'कृपया सभी सुविधाओं को अनलॉक करने के लिए अपना KYC पूरा करें।' })
   },
+  GROUP_FUNDING_REQUEST: {
+    en: (data) => ({ title: 'Group Funding Request', body: `${data?.purpose || 'A group'} has requested ₹${data?.amount} in funding.` }),
+    hi: (data) => ({ title: 'समूह फंडिंग अनुरोध', body: `${data?.purpose || 'एक समूह'} ने ₹${data?.amount} की फंडिंग का अनुरोध किया है।` })
+  },
+  GROUP_FUNDING_APPROVED: {
+    en: (data) => ({ title: 'Investment Approved', body: `A lender has invested ₹${data?.amount} in your group.` }),
+    hi: (data) => ({ title: 'निवेश स्वीकृत', body: `एक ऋणदाता ने आपके समूह में ₹${data?.amount} का निवेश किया है।` })
+  },
   GENERAL: {
     en: (data) => ({ title: data?.title || 'Notice', body: data?.body || '' }),
     hi: (data) => ({ title: data?.title || 'सूचना', body: data?.body || '' })
