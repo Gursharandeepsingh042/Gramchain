@@ -127,33 +127,110 @@ export const getSHGById = async (shgId: string) => {
     include: {
       members: { include: { user: { select: { id: true, phone: true, name: true, walletAddress: true } } } },
       meetings: { orderBy: { heldAt: 'desc' }, take: 5 },
-      loans: { include: { member: true }, where: { status: { in: ['ACTIVE', 'APPROVED', 'PENDING'] } } },
+      loans: {
+        include: { member: { select: { id: true, name: true } } },
+        where: { status: { in: ['ACTIVE', 'APPROVED', 'PENDING', 'REPAID'] } },
+        orderBy: { createdAt: 'desc' },
+      },
+      fundingRequests: {
+        include: {
+          investments: {
+            where: { status: 'APPROVED' },
+            include: { lender: { select: { id: true, name: true } } },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
     },
   })
   if (!group) throw new AppError(404, 'SHG_NOT_FOUND', 'SHG group not found')
 
-  if (redis) {
-    await redis.setEx(cacheKey, 60, JSON.stringify(group))
+  // Compute pool balance from ledger
+  const sumResult = await prisma.ledgerEntry.aggregate({
+    where: { entityType: 'SHG', entityId: shgId },
+    _sum: { amountPaise: true },
+  })
+  const poolBalancePaise = sumResult._sum.amountPaise ?? 0
+  const totalLenderFunds = group.fundingRequests.reduce((sum: number, req: any) => {
+    return sum + req.investments.reduce((s: number, inv: any) => s + Number(inv.amount), 0)
+  }, 0)
+  const recentTxns = await prisma.ledgerEntry.findMany({
+    where: { entityType: 'SHG', entityId: shgId },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+  })
+
+  const enriched = {
+    ...group,
+    poolBalance: (poolBalancePaise / 100) + totalLenderFunds,
+    poolTransactions: recentTxns,
   }
 
-  return group
+  if (redis) {
+    await redis.setEx(cacheKey, 60, JSON.stringify(enriched))
+  }
+
+  return enriched
 }
 
 /**
  * Get all SHG groups a user belongs to
  */
 export const getUserSHGs = async (userId: string) => {
-  return prisma.sHGMember.findMany({
+  const memberships = await prisma.sHGMember.findMany({
     where: { userId },
     include: {
       shg: {
         include: {
-          members: true,
-          loans: { include: { member: true }, where: { status: { in: ['ACTIVE', 'APPROVED', 'PENDING'] } } },
+          members: { include: { user: { select: { id: true, name: true, phone: true } } } },
+          loans: {
+            include: { member: { select: { id: true, name: true } } },
+            where: { status: { in: ['ACTIVE', 'APPROVED', 'PENDING', 'REPAID'] } },
+            orderBy: { createdAt: 'desc' },
+          },
+          fundingRequests: {
+            include: {
+              investments: {
+                where: { status: 'APPROVED' },
+                include: { lender: { select: { id: true, name: true } } },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
         },
       },
     },
   })
+
+  // Augment each membership with poolBalance from ledger
+  return Promise.all(memberships.map(async (m) => {
+    const sumResult = await prisma.ledgerEntry.aggregate({
+      where: { entityType: 'SHG', entityId: m.shgId },
+      _sum: { amountPaise: true },
+    })
+    const poolBalancePaise = sumResult._sum.amountPaise ?? 0
+    const poolBalance = poolBalancePaise / 100
+
+    // Compute totalFunded from approved investments on all requests
+    const totalLenderFunds = m.shg.fundingRequests.reduce((sum: number, req: any) => {
+      return sum + req.investments.reduce((s: number, inv: any) => s + Number(inv.amount), 0)
+    }, 0)
+
+    const recentTxns = await prisma.ledgerEntry.findMany({
+      where: { entityType: 'SHG', entityId: m.shgId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    })
+
+    return {
+      ...m,
+      shg: {
+        ...m.shg,
+        poolBalance: poolBalance + totalLenderFunds,
+        poolTransactions: recentTxns,
+      },
+    }
+  }))
 }
 
 /**

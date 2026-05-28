@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useAuthStore } from '@/store/auth.store'
-import { lenderApi, notificationApi } from '@/services/api'
+import { lenderApi, notificationApi, fundingApi } from '@/services/api'
 import { Skeleton } from '@/components/ui/SharedComponents'
 import { colors } from '@/constants/colors'
 import { radius, shadows, spacing } from '@/constants/design'
@@ -35,6 +35,7 @@ export default function PortfolioScreen() {
   const [loading, setLoading] = useState(true)
   const [portfolio, setPortfolio] = useState(INITIAL_PORTFOLIO)
   const [recentLoans, setRecentLoans] = useState<any[]>([])
+  const [myInvestments, setMyInvestments] = useState<any[]>([])
   const [notifPanelVisible, setNotifPanel] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -61,10 +62,11 @@ export default function PortfolioScreen() {
 
   const fetchPortfolioData = useCallback(async () => {
     try {
-      const [portfolioRes, txRes, notifRes] = await Promise.allSettled([
+      const [portfolioRes, txRes, notifRes, fundingRes] = await Promise.allSettled([
         lenderApi.getPortfolio(),
         lenderApi.getTransactions(),
         notificationApi.getAll().catch(() => null),
+        fundingApi.getFundingRequests(),
       ])
 
       // Portfolio metrics
@@ -94,6 +96,15 @@ export default function PortfolioScreen() {
       if (notifRes && notifRes.status === 'fulfilled') {
         setNotifications(notifRes.value?.data?.data?.items || [])
         setUnreadCount(notifRes.value?.data?.data?.unreadCount || 0)
+      }
+
+      // Investment transactions (all funded groups)
+      if (fundingRes.status === 'fulfilled') {
+        const allReqs = fundingRes.value?.data?.data || []
+        const funded = allReqs.filter((req: any) =>
+          ['FULLY_FUNDED', 'DISBURSED', 'ACTIVE'].includes(req.status)
+        )
+        setMyInvestments(funded)
       }
     } catch (e) {
       console.error('Portfolio fetch error:', e)
@@ -151,7 +162,7 @@ export default function PortfolioScreen() {
           {/* Header */}
           <Animated.View style={[styles.headerRow, makeAnim(headerAnim)]}>
             <View>
-              <Text style={styles.greeting}>Welcome back 👋</Text>
+              <Text style={styles.greeting}>Welcome investor 👋</Text>
               <Text style={styles.userName}>{userName}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -189,7 +200,7 @@ export default function PortfolioScreen() {
                 <View style={styles.heroCircle2} />
                 <View style={styles.heroContent}>
                   <View style={styles.heroTopRow}>
-                    <Text style={styles.heroLabel}>💎 Total Portfolio Value</Text>
+                    <Text style={styles.heroLabel}>� Total Portfolio Value</Text>
                     <View style={styles.apyBadge}>
                       <Text style={styles.apyText}>{portfolio.apy}% APY</Text>
                     </View>
@@ -298,6 +309,48 @@ export default function PortfolioScreen() {
               </View>
             )}
           </Animated.View>
+
+          {/* Investment Transactions per Group */}
+          {myInvestments.length > 0 && (
+            <View style={styles.txnSection}>
+              <Text style={styles.sectionTitle}>📋 Investment Transactions</Text>
+              {myInvestments.map((req: any) => {
+                const totalFunded = req.totalFunded || 0
+                const progress = req.amount > 0 ? Math.min((totalFunded / Number(req.amount)) * 100, 100) : 100
+                return (
+                  <TouchableOpacity
+                    key={req.id}
+                    style={styles.txnCard}
+                    activeOpacity={0.85}
+                    onPress={() => router.push({ pathname: '/transaction-receipt' as any, params: { fundingRequestId: req.id } })}
+                  >
+                    <View style={styles.txnCardHeader}>
+                      <Text style={styles.txnGroupName}>{req.shg?.name || 'SHG Group'}</Text>
+                      <View style={[styles.txnStatusBadge, { backgroundColor: req.status === 'DISBURSED' ? '#dcfce7' : '#dbeafe' }]}>
+                        <Text style={[styles.txnStatusText, { color: req.status === 'DISBURSED' ? '#15803d' : '#1d4ed8' }]}>
+                          {req.status}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.txnAmount}>₹{Number(req.amount).toLocaleString('en-IN')}</Text>
+                    <Text style={styles.txnPurpose}>{req.purpose}</Text>
+                    <View style={styles.txnProgressBar}>
+                      <View style={[styles.txnProgressFill, { width: `${progress}%` }]} />
+                    </View>
+                    <View style={styles.txnMeta}>
+                      <Text style={styles.txnMetaText}>₹{totalFunded.toLocaleString('en-IN')} funded</Text>
+                      <Text style={styles.txnMetaText}>{req.durationMonths}mo · {req.investorCount || 0} investors</Text>
+                    </View>
+                    {req.disbursedAt && (
+                      <Text style={styles.txnDisbursed}>
+                        Disbursed {new Date(req.disbursedAt).toLocaleDateString('en-IN')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          )}
 
           {/* CTA */}
           <TouchableOpacity
@@ -773,5 +826,75 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  txnSection: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  txnCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  txnCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  txnGroupName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#f1f5f9',
+    flex: 1,
+  },
+  txnStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  txnStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  txnAmount: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#60a5fa',
+    marginBottom: 2,
+  },
+  txnPurpose: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 8,
+  },
+  txnProgressBar: {
+    height: 4,
+    backgroundColor: '#334155',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  txnProgressFill: {
+    height: '100%',
+    backgroundColor: '#3b82f6',
+    borderRadius: 2,
+  },
+  txnMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  txnMetaText: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  txnDisbursed: {
+    fontSize: 11,
+    color: '#4ade80',
+    marginTop: 4,
+    fontWeight: '600',
   },
 })

@@ -26,7 +26,14 @@ export default function GroupDetailScreen() {
     try {
       const res = await shgApi.getMyGroups()
       const foundGroup = res.data.data.find((g: any) => g.shgId === shgId)
-      setShg(foundGroup?.shg || null)
+      if (foundGroup?.shg) {
+        setShg(foundGroup.shg)
+        if (foundGroup.shg.fundingRequests) {
+          setFundingRequests(foundGroup.shg.fundingRequests)
+        } else {
+          loadFundingRequests()
+        }
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -70,10 +77,12 @@ export default function GroupDetailScreen() {
   const members = shg.members || []
   const loans = shg.loans || []
   const pendingLoans = loans.filter((l: any) => l.status === 'PENDING')
-  const activeLoans = loans.filter((l: any) => l.status === 'ACTIVE')
-  const totalFund = (shg.poolBalance || 0) + fundingRequests.reduce((sum, req) => sum + (req.totalFunded || 0), 0)
-  const lenders = shg.lenders || [] // Lenders who have funded this group
-  const activeFundingRequests = fundingRequests.filter((req: any) => req.status === 'FULLY_FUNDED' || req.status === 'DISBURSED')
+  const activeLoans = loans.filter((l: any) => ['ACTIVE', 'APPROVED'].includes(l.status))
+  const repaidLoans = loans.filter((l: any) => l.status === 'REPAID')
+  const totalFund = shg.poolBalance || 0
+  const lenders = shg.lenders || []
+  const poolTxns = shg.poolTransactions || []
+  const activeFundingRequests = fundingRequests.filter((req: any) => ['FULLY_FUNDED', 'DISBURSED', 'ACTIVE'].includes(req.status))
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -251,6 +260,35 @@ export default function GroupDetailScreen() {
                 </Text>
               </View>
             ))}
+          </Card>
+        )}
+
+        {/* Pool Transactions */}
+        {poolTxns.length > 0 && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>📒 Pool Transactions ({poolTxns.length})</Text>
+            <Divider />
+            {poolTxns.map((txn: any) => {
+              const amt = txn.amountPaise / 100
+              const isCredit = txn.amountPaise > 0
+              const typeLabel = txn.type === 'LENDER_DEPOSIT' ? '🏦 Lender Deposit'
+                : txn.type === 'LOAN_DISBURSAL' ? '💸 Loan Disbursed'
+                : txn.type === 'EMI_RECEIVED' ? '✅ EMI Received'
+                : txn.type === 'INTEREST_ACCRUED' ? '📈 Interest'
+                : txn.type
+              return (
+                <View key={txn.id} style={styles.txnItem}>
+                  <View style={styles.txnLeft}>
+                    <Text style={styles.txnType}>{typeLabel}</Text>
+                    <Text style={styles.txnDate}>{new Date(txn.createdAt).toLocaleDateString('en-IN')}</Text>
+                    {txn.ref && <Text style={styles.txnRef} numberOfLines={1}>Ref: {txn.ref}</Text>}
+                  </View>
+                  <Text style={[styles.txnAmount, { color: isCredit ? '#16a34a' : '#dc2626' }]}>
+                    {isCredit ? '+' : '-'}₹{Math.abs(amt).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              )
+            })}
           </Card>
         )}
 
@@ -534,6 +572,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.primary[700],
     fontWeight: '600',
+  },
+  txnItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  txnLeft: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  txnType: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  txnDate: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  txnRef: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+    marginTop: 1,
+    fontFamily: 'monospace',
+  },
+  txnAmount: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   footerSection: {
     alignItems: 'center',

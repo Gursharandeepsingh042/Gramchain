@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Animated,
-  TouchableOpacity, Dimensions, Modal, Alert,
+  TouchableOpacity, Dimensions, Modal, Alert, FlatList,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
@@ -13,7 +13,7 @@ import { loanApi, shgApi, notificationApi } from '@/services/api'
 
 import { LoanCard } from '@/components/ui/LoanCard'
 import {
-  Card, StatCard, QuickAction, Badge, Skeleton,
+  Card, StatCard, Badge, Skeleton,
   EmptyState, TrustBadge,
 } from '@/components/ui/SharedComponents'
 import { colors } from '@/constants/colors'
@@ -21,13 +21,25 @@ import { radius, shadows, spacing } from '@/constants/design'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
+// EMI Calculation Helper
+const calcEMI = (principal: number, annualRatePercent: number, months: number) => {
+  if (principal <= 0 || months <= 0) return 0
+  const monthlyRate = (annualRatePercent / 100) / 12
+  if (monthlyRate === 0) return principal / months
+  const emi = principal * monthlyRate * Math.pow(1 + monthlyRate, months) / (Math.pow(1 + monthlyRate, months) - 1)
+  return Math.round(emi)
+}
+
 export default function Dashboard() {
   const { t } = useTranslation()
   const { user }  = useAuthStore()
   const { myLoans, setMyLoans, activeLoan } = useLoanStore()
 
   const [refreshing, setRefreshing]         = useState(false)
-  const [shgData, setShgData]               = useState<any>(null)
+  const [shgList, setShgList]               = useState<any[]>([])
+  const [shgCarouselIndex, setShgCarouselIndex] = useState(0)
+  const shgCarouselRef = useRef<FlatList>(null)
+  const shgTimerRef = useRef<NodeJS.Timeout | null>(null)
   const [loading, setLoading]               = useState(true)
   const [notifPanelVisible, setNotifPanel]  = useState(false)
   const [notifications, setNotifications]   = useState<any[]>([])
@@ -35,7 +47,11 @@ export default function Dashboard() {
   const [approvingLoan, setApprovingLoan]     = useState<string | null>(null)
   const [votingDissolveNotif, setVotingDN]   = useState<string | null>(null)
   const [creditScore, setCreditScore]       = useState<number | null>(null)
+  const [creditScoreLoading, setCreditScoreLoading] = useState(false)
   const [totalBorrowed, setTotalBorrowed]   = useState(0)
+  const [carouselIndex, setCarouselIndex]   = useState(0)
+  const carouselRef = useRef<FlatList>(null)
+  const carouselTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Staggered entrance animations
   const greetAnim   = useRef(new Animated.Value(0)).current
@@ -66,20 +82,38 @@ export default function Dashboard() {
         shgApi.getMyGroups(),
         notificationApi.getAll().catch(() => null),
       ])
-      setMyLoans(loansRes.data.data)
+      const loans = loansRes.data.data
+      setMyLoans(loans)
       
-      // Calculate total borrowed from all loans
-      const total = loansRes.data.data.reduce((sum: number, loan: any) => sum + (loan.amount || 0), 0)
+      // Calculate total borrowed including interest (principal + total interest)
+      const total = loans.reduce((sum: number, loan: any) => {
+        const principal = loan.amount || 0
+        const interestRate = loan.interestRateBps ? loan.interestRateBps / 100 : 18
+        const tenure = loan.tenureMonths || 12
+        const emi = calcEMI(principal, interestRate, tenure)
+        const totalPayable = emi * tenure
+        return sum + totalPayable
+      }, 0)
       setTotalBorrowed(total)
       
-      // Get credit score from latest loan if available
-      if (loansRes.data.data.length > 0) {
-        const latestLoan = loansRes.data.data[0]
-        setCreditScore(latestLoan.creditScore || null)
-      }
       
       if (shgRes.data.data.length > 0) {
-        setShgData(shgRes.data.data[0].shg)
+        setShgList(shgRes.data.data)
+        
+        // Fetch credit score directly from API using shgId
+        const shgId = shgRes.data.data[0].shgId
+        if (shgId) {
+          setCreditScoreLoading(true)
+          try {
+            const scoreRes = await loanApi.getCreditScore({ shgId, amount: 0, refresh: false })
+            setCreditScore(scoreRes.data?.data?.score ?? null)
+          } catch (e) {
+            console.warn('Failed to fetch credit score:', e)
+            setCreditScore(null)
+          } finally {
+            setCreditScoreLoading(false)
+          }
+        }
       }
       if (notifRes) {
         setNotifications(notifRes.data.data.items || [])
@@ -150,6 +184,36 @@ export default function Dashboard() {
     }
   }
 
+  // Auto-rotate loan carousel every 5 seconds
+  useEffect(() => {
+    if (myLoans.length > 1) {
+      carouselTimerRef.current = setInterval(() => {
+        const nextIndex = (carouselIndex + 1) % myLoans.length
+        setCarouselIndex(nextIndex)
+        carouselRef.current?.scrollToIndex({ index: nextIndex, animated: true })
+      }, 5000) as unknown as NodeJS.Timeout
+      return () => {
+        if (carouselTimerRef.current) clearInterval(carouselTimerRef.current)
+      }
+    }
+  }, [carouselIndex, myLoans.length])
+
+  // Auto-rotate SHG pool carousel every 8 seconds
+  useEffect(() => {
+    if (shgList.length > 1) {
+      shgTimerRef.current = setInterval(() => {
+        setShgCarouselIndex(prev => {
+          const next = (prev + 1) % shgList.length
+          shgCarouselRef.current?.scrollToIndex({ index: next, animated: true })
+          return next
+        })
+      }, 8000) as unknown as NodeJS.Timeout
+      return () => {
+        if (shgTimerRef.current) clearInterval(shgTimerRef.current)
+      }
+    }
+  }, [shgList.length])
+
   useEffect(() => {
     if (user?.id) {
       loadData()
@@ -209,54 +273,81 @@ export default function Dashboard() {
           </View>
         </Animated.View>
 
-        {/* ─── Hero Card (SHG Pool) ──────────────────── */}
+        {/* ─── Hero Card (SHG Pool Carousel) ────────── */}
         {loading ? (
           <View style={styles.heroSkeleton}>
             <Skeleton width="60%" height={14} />
             <Skeleton width="45%" height={32} style={{ marginTop: 8 }} />
             <Skeleton width="70%" height={12} style={{ marginTop: 12 }} />
           </View>
-        ) : shgData ? (
+        ) : shgList.length > 0 ? (
           <Animated.View style={makeAnimStyle(heroAnim)}>
-            <View style={[styles.heroCard, shadows.green]}>
-              {/* Decorative circles */}
-              <View style={styles.heroCircle1} />
-              <View style={styles.heroCircle2} />
-
-              <View style={styles.heroContent}>
-                <View style={styles.heroTopRow}>
-                  <Text style={styles.heroLabel}>
-                    💚 {t('dashboard.groupSavings', { defaultValue: 'Group Savings Pool' })}
-                  </Text>
-                  <Badge label="Active" variant="success" size="sm" />
-                </View>
-
-                <Text style={styles.heroAmount}>
-                  ₹ {shgData?.poolBalance ? shgData.poolBalance.toLocaleString('en-IN') : '0'}
-                </Text>
-
-                <View style={styles.heroDivider} />
-
-                <View style={styles.heroBottomRow}>
-                  <View style={styles.heroMeta}>
-                    <Text style={styles.heroMetaLabel}>SHG</Text>
-                    <Text style={styles.heroMetaValue}>{shgData.name}</Text>
-                  </View>
-                  <View style={styles.heroMeta}>
-                    <Text style={styles.heroMetaLabel}>Members</Text>
-                    <Text style={styles.heroMetaValue}>
-                      {shgData.members?.length ?? '–'}
-                    </Text>
-                  </View>
-                  <View style={styles.heroMeta}>
-                    <Text style={styles.heroMetaLabel}>District</Text>
-                    <Text style={styles.heroMetaValue} numberOfLines={1}>
-                      {shgData.district || '–'}
-                    </Text>
-                  </View>
-                </View>
+            <FlatList
+              ref={shgCarouselRef}
+              data={shgList}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.shgId}
+              onMomentumScrollEnd={(e) => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_W - 40))
+                setShgCarouselIndex(index)
+              }}
+              renderItem={({ item }) => {
+                const shg = item.shg
+                const totalFunds = shg?.fundingRequests?.reduce((sum: number, req: any) => {
+                  return sum + req.investments.reduce((s: number, inv: any) => s + Number(inv.amount), 0)
+                }, 0) || 0
+                return (
+                  <TouchableOpacity
+                    style={[styles.heroCard, shadows.green, { width: SCREEN_W - 40 }]}
+                    activeOpacity={0.88}
+                    onPress={() => router.push({ pathname: '/group-detail' as any, params: { shgId: item.shgId } })}
+                  >
+                    <View style={styles.heroCircle1} />
+                    <View style={styles.heroCircle2} />
+                    <View style={styles.heroContent}>
+                      <View style={styles.heroTopRow}>
+                        <Text style={styles.heroLabel}>
+                          💚 {t('dashboard.groupSavings', { defaultValue: 'Group Savings Pool' })}
+                        </Text>
+                        <Badge label="Active" variant="success" size="sm" />
+                      </View>
+                      <Text style={styles.heroAmount}>
+                        ₹ {shg?.poolBalance ? Number(shg.poolBalance).toLocaleString('en-IN') : '0'}
+                      </Text>
+                      {totalFunds > 0 && (
+                        <Text style={styles.heroSubAmount}>
+                          +₹{totalFunds.toLocaleString('en-IN')} from lenders
+                        </Text>
+                      )}
+                      <View style={styles.heroDivider} />
+                      <View style={styles.heroBottomRow}>
+                        <View style={styles.heroMeta}>
+                          <Text style={styles.heroMetaLabel}>SHG</Text>
+                          <Text style={styles.heroMetaValue} numberOfLines={1}>{shg?.name}</Text>
+                        </View>
+                        <View style={styles.heroMeta}>
+                          <Text style={styles.heroMetaLabel}>Members</Text>
+                          <Text style={styles.heroMetaValue}>{shg?.members?.length ?? '–'}</Text>
+                        </View>
+                        <View style={styles.heroMeta}>
+                          <Text style={styles.heroMetaLabel}>District</Text>
+                          <Text style={styles.heroMetaValue} numberOfLines={1}>{shg?.district || '–'}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )
+              }}
+            />
+            {shgList.length > 1 && (
+              <View style={styles.carouselDots}>
+                {shgList.map((_, i) => (
+                  <View key={i} style={[styles.carouselDot, i === shgCarouselIndex && styles.carouselDotActive]} />
+                ))}
               </View>
-            </View>
+            )}
           </Animated.View>
         ) : null}
 
@@ -265,7 +356,7 @@ export default function Dashboard() {
           <StatCard
             icon="📊"
             label="Credit Score"
-            value={creditScore ? creditScore.toString() : 'N/A'}
+            value={creditScoreLoading ? '...' : creditScore ? creditScore.toString() : 'N/A'}
           />
           <View style={{ width: 12 }} />
           <StatCard
@@ -282,7 +373,7 @@ export default function Dashboard() {
             <Text style={styles.sectionTitle}>
               {t('dashboard.activeLoan', { defaultValue: 'Active Loan' })}
             </Text>
-            {activeLoan && (
+            {myLoans.length > 0 && (
               <TouchableOpacity onPress={() => router.push('/(tabs)/borrow')} accessibilityLabel="View all loans">
                 <Text style={styles.seeAll}>View All →</Text>
               </TouchableOpacity>
@@ -295,8 +386,41 @@ export default function Dashboard() {
               <Skeleton width="80%" height={14} style={{ marginTop: 6 }} />
               <Skeleton width="100%" height={44} radius={12} style={{ marginTop: 16 }} />
             </View>
-          ) : activeLoan ? (
-            <LoanCard loan={activeLoan} onRepay={handleRepay} />
+          ) : myLoans.length > 0 ? (
+            <View style={styles.carouselContainer}>
+              <FlatList
+                ref={carouselRef}
+                data={myLoans}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                onMomentumScrollEnd={(e) => {
+                  const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W)
+                  setCarouselIndex(index)
+                }}
+                renderItem={({ item }) => (
+                  <View style={styles.carouselItem}>
+                    <TouchableOpacity onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: item.id } })}>
+                      <LoanCard loan={item} onRepay={handleRepay} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+              {myLoans.length > 1 && (
+                <View style={styles.carouselDots}>
+                  {myLoans.map((_, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.carouselDot,
+                        i === carouselIndex && styles.carouselDotActive
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
           ) : (
             <EmptyState
               icon="📋"
@@ -307,37 +431,50 @@ export default function Dashboard() {
           )}
         </Animated.View>
 
-        {/* ─── Quick Actions ─────────────────────────── */}
+        {/* ─── Repayment Reminder ─────────────────────── */}
         <Animated.View style={makeAnimStyle(actionsAnim)}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <Text style={styles.sectionTitle}>Upcoming Payments</Text>
           </View>
-          <View style={styles.actionsGrid}>
-            <QuickAction
-              icon="💰"
-              label={t('dashboard.borrow', { defaultValue: 'Borrow' })}
-              onPress={() => router.push('/(tabs)/borrow')}
-              color={colors.primary[600]}
-            />
-            <QuickAction
-              icon="📊"
-              label={t('dashboard.history', { defaultValue: 'History' })}
-              onPress={() => router.push('/(tabs)/borrow')}
-              color={colors.info[600]}
-            />
-            <QuickAction
-              icon="👥"
-              label={t('dashboard.group', { defaultValue: 'Group' })}
-              onPress={() => router.push('/(tabs)/group')}
-              color={colors.secondary[600]}
-            />
-            <QuickAction
-              icon="🏛️"
-              label={t('dashboard.schemes', { defaultValue: 'Schemes' })}
-              onPress={() => router.push('/(tabs)/schemes')}
-              color={colors.danger[500]}
-            />
-          </View>
+          {(() => {
+            const activeLoans = myLoans
+              .filter((l: any) => l.status === 'ACTIVE' && l.nextEmiDue)
+              .sort((a: any, b: any) => new Date(a.nextEmiDue).getTime() - new Date(b.nextEmiDue).getTime())
+            
+            if (activeLoans.length === 0) {
+              return (
+                <View style={[styles.reminderCard, shadows.sm]}>
+                  <View style={styles.reminderIcon}>
+                    <Ionicons name="checkmark-circle-outline" size={24} color={colors.primary[600]} />
+                  </View>
+                  <View style={styles.reminderContent}>
+                    <Text style={styles.reminderTitle}>All Caught Up!</Text>
+                    <Text style={styles.reminderDate}>No pending EMI payments</Text>
+                  </View>
+                </View>
+              )
+            }
+            
+            return activeLoans.map((loan: any) => (
+              <View key={loan.id} style={[styles.reminderCard, shadows.sm, { marginBottom: 10 }]}>
+                <View style={styles.reminderIcon}>
+                  <Ionicons name="calendar-outline" size={24} color={colors.primary[600]} />
+                </View>
+                <View style={styles.reminderContent}>
+                  <Text style={styles.reminderTitle}>{loan.purpose || 'Loan EMI'}</Text>
+                  <Text style={styles.reminderDate}>
+                    {new Date(loan.nextEmiDue).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Text>
+                  <Text style={styles.reminderAmount}>
+                    ₹{Math.round(loan.emiAmount || 0).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.reminderPayBtn} onPress={() => handleRepay(loan.id)}>
+                  <Text style={styles.reminderPayBtnText}>Pay Now</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          })()}
         </Animated.View>
 
         {/* ─── Footer Trust Badge ────────────────────── */}
@@ -716,7 +853,13 @@ const styles = StyleSheet.create({
     fontWeight:    '900',
     color:         '#ffffff',
     letterSpacing: -1.5,
-    marginBottom:  8,
+    marginBottom:  4,
+  },
+  heroSubAmount: {
+    fontSize:    13,
+    fontWeight:  '600',
+    color:       'rgba(255,255,255,0.75)',
+    marginBottom: 8,
   },
   heroDivider: {
     height:          1,
@@ -785,16 +928,80 @@ const styles = StyleSheet.create({
     marginBottom:    20,
   },
 
-  // ── Quick Actions Grid ──
-  actionsGrid: {
-    flexDirection:   'row',
+  // ── Carousel ──
+  carouselContainer: {
+    marginBottom: 24,
+  },
+  carouselItem: {
+    width: SCREEN_W - 32,
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 6,
+  },
+  carouselDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.gray[300],
+  },
+  carouselDotActive: {
+    backgroundColor: colors.primary[600],
+    width: 18,
+  },
+
+  // ── Reminder Card ──
+  reminderCard: {
     backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    padding:         20,
-    borderWidth:     1,
-    borderColor:     colors.gray[100],
-    ...shadows.sm,
-    marginBottom:    24,
+    borderRadius: radius.card,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  reminderIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  reminderContent: {
+    flex: 1,
+  },
+  reminderTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    marginBottom: 2,
+  },
+  reminderDate: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    marginBottom: 4,
+  },
+  reminderAmount: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  reminderPayBtn: {
+    backgroundColor: colors.primary[600],
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  reminderPayBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
   },
 
   // ── Footer ──
