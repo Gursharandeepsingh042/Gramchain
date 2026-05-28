@@ -14,9 +14,38 @@ export const getPortfolioMetrics = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User not found')
 
-  // Aggregate real data from DB (Phase 2: supplement with on-chain events)
-  const totalInvestedInr = 0
-  const totalReturnsInr = 0
+  // Aggregate real data from LenderInvestment table (new source of truth)
+  const investments = await (prisma as any).lenderInvestment.findMany({
+    where: { lenderId: userId, status: 'APPROVED' },
+    include: { fundingRequest: true },
+  })
+
+  const totalInvestedInr = investments.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0)
+
+  // Find all loans associated with the SHGs funded by this lender
+  const fundedShgIds = investments.map((inv: any) => inv.shgId).filter(Boolean) as string[]
+
+  const loans = await prisma.loan.findMany({
+    where: {
+      shgId: { in: fundedShgIds }
+    }
+  })
+
+  const activeLoans = loans.filter(l => l.status === 'ACTIVE').length
+  const repaidLoans = loans.filter(l => l.status === 'REPAID').length
+
+  // Calculate returns from actual Repayment records
+  const repayments = await prisma.repayment.findMany({
+    where: {
+      loan: { shgId: { in: fundedShgIds } }
+    }
+  })
+  const totalReturnsInr = repayments.reduce((sum: number, r: any) => sum + Number(r.amount), 0)
+
+  const totalLoansCount = activeLoans + repaidLoans
+  const repaymentRate = totalLoansCount > 0
+    ? Math.round((repaidLoans / totalLoansCount) * 100)
+    : 100
 
   return {
     totalInvested: {
@@ -29,9 +58,53 @@ export const getPortfolioMetrics = async (userId: string) => {
       inr: totalReturnsInr,
     },
     apy: 12.4,           // Calculated from pool performance
-    activeLoans: 0,
-    repaidLoans: 0,
-    repaymentRate: 0,
+    activeLoans,
+    repaidLoans,
+    repaymentRate,
+  }
+}
+
+/**
+ * Get lender transactions (list of pool funding commitments)
+ */
+export const getLenderTransactions = async (userId: string) => {
+  const investments = await (prisma as any).lenderInvestment.findMany({
+    where: { lenderId: userId, status: 'APPROVED' },
+    include: {
+      fundingRequest: {
+        include: { shg: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  const transactions = investments.map((inv: any) => {
+    const shg = inv.fundingRequest?.shg
+    const request = inv.fundingRequest
+
+    let daysRemaining = 0
+    if (request?.disbursedAt) {
+      const disbursedDate = new Date(request.disbursedAt)
+      const endDate = new Date(disbursedDate)
+      endDate.setMonth(endDate.getMonth() + (request.durationMonths || 12))
+      daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    }
+
+    return {
+      id: inv.id,
+      shg: shg?.name || 'SHG Pool',
+      shgName: shg?.name || 'SHG Pool',
+      district: shg?.district || shg?.state || 'District',
+      amount: Number(inv.amount),
+      status: request?.status === 'DISBURSED' ? 'ACTIVE' : request?.status || 'PENDING',
+      daysRemaining,
+      createdAt: inv.createdAt,
+    }
+  })
+
+  return {
+    transactions,
+    totalCount: transactions.length,
   }
 }
 
@@ -86,7 +159,7 @@ export const getAvailablePools = async (filters?: { tier?: string; state?: strin
     .map(shg => {
       const pendingLoans = shg.loans
       const latestLoan = pendingLoans[0] || null
-      
+
       return {
         id: shg.id,
         shgName: shg.name,

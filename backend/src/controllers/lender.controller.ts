@@ -32,45 +32,6 @@ export const getAvailablePools = async (req: AuthenticatedRequest, res: Response
 }
 
 /**
- * POST /lender/pools/:poolId/fund
- * Body: { amount: number }
- * Initiates funding of a specific loan pool
- */
-export const fundPool = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const { poolId } = req.params
-    const { amount } = req.body // amount in INR
-
-    if (!poolId || !amount || amount <= 0) {
-      sendError(res, 'INVALID_INPUT', 'Valid poolId and positive amount are required')
-      return
-    }
-
-    const { prisma } = require('@/lib/prisma')
-    
-    // Add LedgerEntry
-    await prisma.ledgerEntry.create({
-      data: {
-        entityType: 'lender',
-        entityId: req.userId!,
-        type: 'LENDER_DEPOSIT',
-        amountPaise: amount * 100, // convert INR to paise
-        balancePaise: 0, // Mock balance update for now
-        ref: poolId
-      }
-    })
-
-    sendSuccess(res, {
-      message: 'Investment commitment recorded successfully.',
-      poolId,
-      amount
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
  * GET /lender/impact
  * Returns ESG impact metrics for the lender's portfolio
  */
@@ -89,8 +50,8 @@ export const getImpactMetrics = async (req: AuthenticatedRequest, res: Response,
  */
 export const getTransactions = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // Phase 2: Query LenderTransaction model
-    sendSuccess(res, { transactions: [], totalCount: 0 })
+    const result = await LenderService.getLenderTransactions(req.userId!)
+    sendSuccess(res, result)
   } catch (error) {
     next(error)
   }
