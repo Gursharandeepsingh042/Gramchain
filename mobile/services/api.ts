@@ -121,6 +121,7 @@ export const loanApi = {
   applyLoan: (data: { shgId: string; amount: string; tenureMonths: number; purpose: string }) =>
     api.post('/loan/apply', data),
   approveLoan: (loanId: string) => api.post(`/loan/${loanId}/approve`),
+  denyLoan: (loanId: string) => api.post(`/loan/${loanId}/deny`),
   repayLoan: (loanId: string) => api.post(`/loan/${loanId}/repay`),
   /** M4: Fetch ML credit score before applying. Pass refresh=true to bypass 24h cache. */
   getCreditScore: (params: { shgId: string; amount: number; refresh?: boolean }) =>
@@ -190,3 +191,33 @@ export const lenderApi = {
   getImpactMetrics: () => api.get('/lender/impact'),
   getTransactions: () => api.get('/lender/transactions'),
 }
+
+export const fundingApi = {
+  createFundingRequest: (data: {
+    shgId: string
+    amount: number
+    durationMonths: number
+    purpose: string
+    minInvestment: number
+    maxInvestment: number
+    signatureUrl?: string
+  }) => api.post('/funding', data),
+  getFundingRequests: (status?: string) =>
+    api.get('/funding', { params: status ? { status } : {} }),
+  investInGroup: (fundingRequestId: string, data: {
+    amount: number
+    interestRateBps: number
+  }) => api.post(`/funding/${fundingRequestId}/invest`, data),
+  getMyFundingRequests: () => api.get('/funding/my'),
+  approveInvestment: (investmentId: string) =>
+    api.post(`/funding/investments/${investmentId}/approve`),
+  declineInvestment: (investmentId: string) =>
+    api.post(`/funding/investments/${investmentId}/decline`),
+  disburseLoan: (fundingRequestId: string) =>
+    api.post(`/funding/${fundingRequestId}/disburse`),
+  getReceipt: (fundingRequestId: string) =>
+    api.get(`/funding/${fundingRequestId}/receipt`),
+  downloadAgreement: (investmentId: string) =>
+    api.get(`/funding/investments/${investmentId}/agreement`, { responseType: 'blob' }),
+}
+

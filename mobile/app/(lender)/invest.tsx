@@ -4,8 +4,9 @@ import {
   RefreshControl, Alert, TextInput, Modal
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { lenderApi } from '@/services/api'
+import { lenderApi, fundingApi } from '@/services/api'
 import { Skeleton } from '@/components/ui/SharedComponents'
 import { colors } from '@/constants/colors'
 import { radius, shadows } from '@/constants/design'
@@ -13,8 +14,8 @@ import { radius, shadows } from '@/constants/design'
 
 
 /**
- * Invest Screen — browse and fund loan pools by Risk Tier + Geographic Filter.
- * Fetches live data from GET /lender/pools, falls back to demo data on error.
+ * Invest Screen — browse and fund group funding requests.
+ * Fetches live data from GET /funding, allows lenders to invest with min/max limits.
  */
 export default function InvestScreen() {
   const [selectedTier, setSelectedTier] = useState<'ALL' | 'AA' | 'A' | 'B'>('ALL')
@@ -22,11 +23,12 @@ export default function InvestScreen() {
   const [showStateFilter, setShowStateFilter] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [pools, setPools] = useState<any[]>([])
-  const [fundingPool, setFundingPool] = useState<string | null>(null)
+  const [fundingRequests, setFundingRequests] = useState<any[]>([])
+  const [investing, setInvesting] = useState<string | null>(null)
   const [investAmount, setInvestAmount] = useState('5000')
+  const [interestRate, setInterestRate] = useState('18')
   const [showInvestModal, setShowInvestModal] = useState(false)
-  const [activePool, setActivePool] = useState<any>(null)
+  const [activeRequest, setActiveRequest] = useState<any>(null)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   const fadeAnim = useRef(new Animated.Value(0)).current
@@ -43,39 +45,34 @@ export default function InvestScreen() {
     { id: 'B' as const, label: 'B Growth', emoji: '🚀', apy: '16%', risk: 'Higher', color: '#ef4444' },
   ]
 
-  const fetchPools = useCallback(async () => {
+  const fetchFundingRequests = useCallback(async () => {
     try {
-      const params: any = {}
-      if (selectedTier !== 'ALL') params.tier = selectedTier
-      if (selectedState !== 'All States') params.state = selectedState
-
-      const res = await lenderApi.getAvailablePools(params)
+      const res = await fundingApi.getFundingRequests()
       const data = res.data.data
-
-      if (data.pools && data.pools.length > 0) {
-        setPools(data.pools)
-      }
+      setFundingRequests(data || [])
     } catch (e) {
-      console.warn('Pools API failed:', e)
-      setPools([])
+      console.warn('Funding requests API failed:', e)
+      setFundingRequests([])
     } finally {
       setLoading(false)
     }
-  }, [selectedTier, selectedState])
+  }, [])
 
   useEffect(() => {
     setLoading(true)
-    fetchPools()
-  }, [fetchPools])
+    fetchFundingRequests()
+  }, [fetchFundingRequests])
 
   const onRefresh = async () => {
     setRefreshing(true)
-    await fetchPools()
+    await fetchFundingRequests()
     setRefreshing(false)
   }
 
-  const handleFundPool = (pool: any) => {
-    setActivePool(pool)
+  const handleInvest = (request: any) => {
+    setActiveRequest(request)
+    setInvestAmount(String(request.minInvestment || 10000))
+    setInterestRate('18')
     setShowInvestModal(true)
   }
 
@@ -91,22 +88,34 @@ export default function InvestScreen() {
       return
     }
 
-    setFundingPool(activePool.id)
+    // Validate against min/max limits
+    if (amount < Number(activeRequest.minInvestment) || amount > Number(activeRequest.maxInvestment)) {
+      Alert.alert(
+        'Invalid Amount',
+        `Investment must be between ₹${Number(activeRequest.minInvestment).toLocaleString('en-IN')} and ₹${Number(activeRequest.maxInvestment).toLocaleString('en-IN')}`
+      )
+      return
+    }
+
+    setInvesting(activeRequest.id)
     setShowInvestModal(false)
 
     try {
-      await lenderApi.fundPool(activePool.id, amount)
-      Alert.alert('Success', `Your investment commitment of ₹${amount.toLocaleString('en-IN')} has been recorded.`)
-      fetchPools()
+      await fundingApi.investInGroup(activeRequest.id, {
+        amount,
+        interestRateBps: parseInt(interestRate) * 100
+      })
+      Alert.alert('Success', `Match offer sent! Waiting for SHG leader to accept.`)
+      fetchFundingRequests()
     } catch (err: any) {
-      Alert.alert('Error', 'Failed to register investment.')
+      Alert.alert('Error', err.response?.data?.error?.message || 'Failed to submit investment.')
     } finally {
-      setFundingPool(null)
-      setActivePool(null)
+      setInvesting(null)
+      setActiveRequest(null)
     }
   }
 
-  const filteredPools = pools
+  const filteredRequests = fundingRequests
 
   const tierColor = (tier: string) => {
     if (tier === 'AA') return '#22c55e'
@@ -132,7 +141,7 @@ export default function InvestScreen() {
           {/* Header */}
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.title}>Invest</Text>
+              <Text style={styles.title}>Fund / Match</Text>
               <Text style={styles.subtitle}>Browse loan pools by risk and geography</Text>
             </View>
           </View>
@@ -188,7 +197,7 @@ export default function InvestScreen() {
 
           {/* Pool Cards */}
           <View style={styles.poolsSection}>
-            <Text style={styles.resultCount}>{filteredPools.length} pools available</Text>
+            <Text style={styles.resultCount}>{filteredRequests.length} funding requests available</Text>
 
             {loading ? (
               [1, 2, 3].map(i => (
@@ -206,26 +215,31 @@ export default function InvestScreen() {
               ))
             ) : (
               <>
-                {filteredPools.map((pool: any) => {
-                  const poolAmount = pool.amount?.inr || pool.amount || 0
-                  const poolFunded = pool.funded || 0
-                  const progress = poolAmount > 0 ? (poolFunded / poolAmount) * 100 : 0
-                  const remaining = poolAmount - poolFunded
-                  const poolName = pool.shgName || pool.shg || 'SHG Pool'
+                {filteredRequests.map((request: any) => {
+                  const requestAmount = Number(request.amount) || 0
+                  const requestFunded = request.totalFunded || 0
+                  const progress = requestAmount > 0 ? (requestFunded / requestAmount) * 100 : 0
+                  const remaining = requestAmount - requestFunded
+                  const groupName = request.shg?.name || 'SHG Group'
 
                   return (
-                    <TouchableOpacity key={pool.id} style={styles.poolCard} activeOpacity={0.85}>
+                    <TouchableOpacity 
+                      key={request.id} 
+                      style={styles.poolCard} 
+                      activeOpacity={0.85}
+                      onPress={() => router.push({ pathname: '/group-detail' as any, params: { shgId: request.shgId } })}
+                    >
                       {/* Header Row */}
                       <View style={styles.poolHeader}>
                         <View>
-                          <Text style={styles.poolShg}>{poolName}</Text>
+                          <Text style={styles.poolShg}>{groupName}</Text>
                           <Text style={styles.poolLocation}>
-                            📍 {pool.district}, {pool.state}
+                            📍 {request.shg?.district}, {request.shg?.state}
                           </Text>
                         </View>
-                        <View style={[styles.tierBadge, { backgroundColor: `${tierColor(pool.tier)}20` }]}>
-                          <Text style={[styles.tierBadgeText, { color: tierColor(pool.tier) }]}>
-                            {pool.tier}
+                        <View style={[styles.tierBadge, { backgroundColor: '#3b82f620' }]}>
+                          <Text style={[styles.tierBadgeText, { color: '#3b82f6' }]}>
+                            {request.status}
                           </Text>
                         </View>
                       </View>
@@ -233,64 +247,81 @@ export default function InvestScreen() {
                       {/* Purpose */}
                       <View style={styles.purposeRow}>
                         <Text style={styles.purposeLabel}>Purpose:</Text>
-                        <Text style={styles.purposeValue}>{pool.purpose}</Text>
+                        <Text style={styles.purposeValue}>{request.purpose}</Text>
                       </View>
 
                       {/* Progress Bar */}
                       <View style={styles.progressContainer}>
                         <View style={styles.progressBar}>
-                          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%`, backgroundColor: tierColor(pool.tier) }]} />
+                          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%`, backgroundColor: '#3b82f6' }]} />
                         </View>
                         <View style={styles.progressLabels}>
-                          <Text style={styles.progressText}>₹{poolFunded.toLocaleString('en-IN')} funded</Text>
-                          <Text style={styles.progressText}>₹{poolAmount.toLocaleString('en-IN')} target</Text>
+                          <Text style={styles.progressText}>₹{requestFunded.toLocaleString('en-IN')} funded</Text>
+                          <Text style={styles.progressText}>₹{requestAmount.toLocaleString('en-IN')} target</Text>
                         </View>
                       </View>
 
                       {/* Stats Row */}
                       <View style={styles.poolStats}>
                         <View style={styles.poolStatItem}>
-                          <Text style={styles.poolStatValue}>{pool.memberCount || pool.members || '–'}</Text>
-                          <Text style={styles.poolStatLabel}>Members</Text>
+                          <Text style={styles.poolStatValue}>{request.investorCount || 0}</Text>
+                          <Text style={styles.poolStatLabel}>Investors</Text>
                         </View>
                         <View style={styles.poolStatItem}>
-                          <Text style={styles.poolStatValue}>{pool.repayRate || '–'}%</Text>
-                          <Text style={styles.poolStatLabel}>Repay Rate</Text>
+                          <Text style={styles.poolStatValue}>{request.durationMonths}mo</Text>
+                          <Text style={styles.poolStatLabel}>Duration</Text>
                         </View>
                         <View style={styles.poolStatItem}>
-                          <Text style={[styles.poolStatValue, { color: tierColor(pool.tier) }]}>
+                          <Text style={[styles.poolStatValue, { color: '#3b82f6' }]}>
                             ₹{remaining.toLocaleString('en-IN')}
                           </Text>
                           <Text style={styles.poolStatLabel}>Remaining</Text>
                         </View>
                       </View>
 
+                      {/* Investment Limits */}
+                      <View style={styles.limitsRow}>
+                        <Text style={styles.limitsText}>
+                          Min: ₹{Number(request.minInvestment).toLocaleString('en-IN')} | 
+                          Max: ₹{Number(request.maxInvestment).toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+
                       {/* Fund CTA */}
-                      {remaining > 0 && (
+                      {remaining > 0 && request.status === 'PENDING' && (
                         <TouchableOpacity
-                          style={[styles.fundBtn, fundingPool === pool.id && { opacity: 0.6 }]}
-                          onPress={() => handleFundPool(pool)}
-                          disabled={fundingPool === pool.id}
+                          style={[styles.fundBtn, investing === request.id && { opacity: 0.6 }]}
+                          onPress={() => handleInvest(request)}
+                          disabled={investing === request.id}
                         >
                           <Text style={styles.fundBtnText}>
-                            {fundingPool === pool.id ? 'Processing...' : 'Fund This Pool →'}
+                            {investing === request.id ? 'Processing...' : 'Fund / Match →'}
                           </Text>
                         </TouchableOpacity>
                       )}
                       {remaining <= 0 && (
-                        <View style={styles.fundedBadge}>
-                          <Text style={styles.fundedText}>✓ Fully Funded</Text>
+                        <View style={styles.fundedActions}>
+                          <View style={styles.fundedBadge}>
+                            <Text style={styles.fundedText}>✓ Fully Funded</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.viewDocBtn}
+                            onPress={() => router.push({ pathname: '/transaction-receipt' as any, params: { fundingRequestId: request.id } })}
+                          >
+                            <Ionicons name="document-text-outline" size={16} color="#fff" />
+                            <Text style={styles.viewDocBtnText}>View Loan Document</Text>
+                          </TouchableOpacity>
                         </View>
                       )}
                     </TouchableOpacity>
                   )
                 })}
 
-                {filteredPools.length === 0 && (
+                {filteredRequests.length === 0 && (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyEmoji}>🔍</Text>
-                    <Text style={styles.emptyTitle}>No pools found</Text>
-                    <Text style={styles.emptySubtitle}>Try adjusting your filters or pull to refresh</Text>
+                    <Text style={styles.emptyTitle}>No funding requests found</Text>
+                    <Text style={styles.emptySubtitle}>Pull to refresh or check back later</Text>
                   </View>
                 )}
               </>
@@ -309,15 +340,15 @@ export default function InvestScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Confirm Investment</Text>
+              <Text style={styles.modalTitle}>Submit Match Offer</Text>
               <TouchableOpacity onPress={() => setShowInvestModal(false)}>
                 <Ionicons name="close" size={24} color="#94a3b8" />
               </TouchableOpacity>
             </View>
 
             <View style={styles.modalBody}>
-              <Text style={styles.modalShgName}>{activePool?.shgName || 'SHG Pool'}</Text>
-              <Text style={styles.modalSubtitle}>Enter amount to commit for this group</Text>
+              <Text style={styles.modalShgName}>{activeRequest?.shg?.name || 'SHG Group'}</Text>
+              <Text style={styles.modalSubtitle}>Enter amount to invest in this group</Text>
 
               <View style={styles.amountInputContainer}>
                 <Text style={styles.currencySymbol}>₹</Text>
@@ -329,6 +360,25 @@ export default function InvestScreen() {
                   placeholder="0"
                   placeholderTextColor="#475569"
                 />
+              </View>
+
+              <View style={styles.interestInputContainer}>
+                <Text style={styles.interestLabel}>Interest Rate (%):</Text>
+                <TextInput
+                  style={styles.interestInput}
+                  value={interestRate}
+                  onChangeText={setInterestRate}
+                  keyboardType="numeric"
+                  placeholder="18"
+                  placeholderTextColor="#475569"
+                />
+              </View>
+
+              <View style={styles.limitsInfo}>
+                <Text style={styles.limitsInfoText}>
+                  Min: ₹{Number(activeRequest?.minInvestment).toLocaleString('en-IN')} | 
+                  Max: ₹{Number(activeRequest?.maxInvestment).toLocaleString('en-IN')}
+                </Text>
               </View>
 
               <View style={styles.termsBox}>
@@ -429,6 +479,9 @@ const styles = StyleSheet.create({
   poolStatValue: { fontSize: 16, fontWeight: '800', color: '#e2e8f0' },
   poolStatLabel: { fontSize: 10, color: '#64748b', fontWeight: '600', marginTop: 2 },
 
+  limitsRow: { marginBottom: 12 },
+  limitsText: { fontSize: 11, color: '#64748b', textAlign: 'center' },
+
   fundBtn: {
     backgroundColor: '#3b82f6', borderRadius: 12, padding: 14, alignItems: 'center',
   },
@@ -439,6 +492,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#22c55e30',
   },
   fundedText: { color: '#4ade80', fontSize: 14, fontWeight: '700' },
+
+  fundedActions: {
+    gap: 8,
+  },
+  viewDocBtn: {
+    backgroundColor: '#3b82f6', borderRadius: 12, padding: 12, alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'center', gap: 6,
+  },
+  viewDocBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 
   emptyState: { alignItems: 'center', paddingVertical: 40 },
   emptyEmoji: { fontSize: 40, marginBottom: 12 },
@@ -469,11 +531,25 @@ const styles = StyleSheet.create({
   
   amountInputContainer: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a',
-    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24,
+    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16,
     borderWidth: 1, borderColor: '#334155',
   },
   currencySymbol: { fontSize: 24, fontWeight: '700', color: '#f1f5f9', marginRight: 8 },
   amountInput: { flex: 1, fontSize: 24, fontWeight: '700', color: '#f1f5f9' },
+
+  interestInputContainer: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a',
+    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12,
+    borderWidth: 1, borderColor: '#334155',
+  },
+  interestLabel: { fontSize: 14, color: '#94a3b8', marginRight: 12 },
+  interestInput: { flex: 1, fontSize: 16, fontWeight: '600', color: '#f1f5f9' },
+
+  limitsInfo: {
+    backgroundColor: '#0f172a', borderRadius: 12, padding: 12, marginBottom: 16,
+    borderWidth: 1, borderColor: '#334155',
+  },
+  limitsInfoText: { fontSize: 12, color: '#64748b', textAlign: 'center' },
 
   termsBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   checkbox: { marginTop: 2 },

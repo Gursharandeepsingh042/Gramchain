@@ -408,6 +408,7 @@ model GroupFundingRequest {
   signatureUrl    String?       // Leader signature image URL
   termsAccepted   Boolean       @default(false)
   status          FundingStatus @default(PENDING)
+  disbursedAt     DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -429,6 +430,7 @@ model LenderInvestment {
   interestRateBps Int           // Interest rate in basis points
   status          FundingStatus @default(PENDING)
   approvedAt      DateTime?
+  declinedAt      DateTime?
   txHash          String?       // Blockchain transaction hash
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

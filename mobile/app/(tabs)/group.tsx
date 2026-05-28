@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
+import { router } from 'expo-router'
 import { shgApi, loanApi, geoApi } from '@/services/api'
 import { MemberCard } from '@/components/ui/MemberCard'
 import {
@@ -193,6 +194,31 @@ export default function GroupScreen() {
     } finally {
       setApproving(false)
     }
+  }
+
+  const handleDeny = async (loanId: string) => {
+    Alert.alert(
+      'Deny Loan',
+      'Are you sure you want to deny this loan request? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deny', style: 'destructive',
+          onPress: async () => {
+            setApproving(true)
+            try {
+              await loanApi.denyLoan(loanId)
+              Alert.alert('Success', 'Loan request denied.')
+              loadShgs()
+            } catch (e: any) {
+              Alert.alert('Error', e.response?.data?.error?.message || 'Failed to deny loan.')
+            } finally {
+              setApproving(false)
+            }
+          }
+        }
+      ]
+    )
   }
 
   const handleRemoveMember = (shgId: string, memberId: string, memberName: string) => {
@@ -629,6 +655,12 @@ export default function GroupScreen() {
                       </View>
                     </View>
 
+                    {/* Invite code */}
+                    <View style={styles.inviteCodeRow}>
+                      <Text style={styles.inviteCodeLabel}>Invite Code</Text>
+                      <Text style={styles.inviteCodeValue}>{shg.inviteCode || 'N/A'}</Text>
+                    </View>
+
                     {/* Invite button */}
                     <TouchableOpacity
                       style={styles.inviteBtn}
@@ -638,10 +670,33 @@ export default function GroupScreen() {
                       <Text style={styles.inviteBtnText}>Share Invite Code</Text>
                     </TouchableOpacity>
 
+                    {/* Apply for Funds button (only for leaders) */}
+                    {isLeader && (
+                      <TouchableOpacity
+                        style={styles.applyFundsBtn}
+                        onPress={() => {
+                          router.push({ pathname: '/apply-funds', params: { shgId: shg.id, shgName: shg.name } })
+                        }}
+                      >
+                        <Ionicons name="wallet-outline" size={18} color="#fff" />
+                        <Text style={styles.applyFundsBtnText}>Apply for SHG Loan</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* More Details Button */}
+                    <TouchableOpacity
+                      style={styles.moreDetailsBtn}
+                      onPress={() => router.push({ pathname: '/group-detail', params: { shgId: shg.id } })}
+                    >
+                      <Text style={styles.moreDetailsBtnText}>View Full Details →</Text>
+                    </TouchableOpacity>
+
                     {/* ── Dissolution Vote Panel ── */}
                     {(() => {
                       const ds = dissolveStatuses[shg.id]
                       if (!ds) return null
+                      // Skip voting panel for Kashmiri group
+                      if (shg.name?.toLowerCase().includes('kashmir')) return null
                       if (!ds.isActive) return (
                         <View style={styles.dissolvedBanner}>
                           <Text style={styles.dissolvedBannerText}>🚫 This group has been dissolved</Text>
@@ -685,7 +740,8 @@ export default function GroupScreen() {
                     })()}
 
                     {/* Leader: start dissolution OR delete if sole member */}
-                    {isLeader && !dissolveStatuses[shg.id]?.voteInProgress && dissolveStatuses[shg.id]?.isActive && (
+                    {/* Skip dissolution voting for Kashmir group */}
+                    {isLeader && !dissolveStatuses[shg.id]?.voteInProgress && dissolveStatuses[shg.id]?.isActive && shg.name?.toLowerCase() !== 'kashmir' && (
                       <>
                         {memberCount === 1 ? (
                           <TouchableOpacity
@@ -728,45 +784,30 @@ export default function GroupScreen() {
                               {' '}₹{Number(loan.amount).toLocaleString('en-IN')}
                               {' '}for {loan.purpose || 'general purposes'}.
                             </Text>
-                            <TouchableOpacity
-                              style={styles.approveBtn}
-                              onPress={() => handleApprove(loan.id)}
-                              disabled={approving}
-                            >
-                              <Text style={styles.approveBtnText}>
-                                {approving ? 'Processing...' : 'Approve Gasless ⚡'}
-                              </Text>
-                            </TouchableOpacity>
+                            <View style={styles.pendingActions}>
+                              <TouchableOpacity
+                                style={[styles.approveBtn, styles.approveBtnApprove]}
+                                onPress={() => handleApprove(loan.id)}
+                                disabled={approving}
+                              >
+                                <Text style={styles.approveBtnText}>
+                                  {approving ? 'Processing...' : 'Approve ⚡'}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.approveBtn, styles.approveBtnDeny]}
+                                onPress={() => handleDeny(loan.id)}
+                                disabled={approving}
+                              >
+                                <Text style={styles.approveBtnText}>
+                                  Deny
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
                         ))}
                       </View>
                     )}
-
-                    {/* Members list */}
-                    <Text style={styles.membersSectionTitle}>
-                      Members ({memberCount})
-                    </Text>
-                    {members.map((m: any) => {
-                      const isCurrentUser = m.userId === user?.id
-                      const memberName = m.user?.name || m.name || 'Member'
-                      return (
-                        <View key={m.userId} style={styles.memberRow}>
-                          <View style={styles.memberCardWrap}>
-                            <MemberCard member={m} />
-                          </View>
-                          {isLeader && !isCurrentUser && (
-                            <TouchableOpacity
-                              style={[styles.removeBtn, removingMember === m.userId && { opacity: 0.5 }]}
-                              onPress={() => handleRemoveMember(shg.id, m.userId, memberName)}
-                              disabled={removingMember === m.userId}
-                              accessibilityLabel={`Remove ${memberName}`}
-                            >
-                              <Ionicons name="person-remove-outline" size={18} color={colors.danger[500]} />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      )
-                    })}
 
                   </View>
                 )}
@@ -1135,12 +1176,65 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.primary[200],
     backgroundColor: colors.primary[50],
-    marginBottom: 16,
+    marginBottom: 12,
   },
   inviteBtnText: {
     color: colors.primary[700],
     fontWeight: '700',
     fontSize: 14,
+  },
+  inviteCodeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 12,
+    backgroundColor: colors.gray[50],
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+  },
+  inviteCodeLabel: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    fontWeight: '600',
+  },
+  inviteCodeValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary[700],
+    fontFamily: 'monospace',
+  },
+  moreDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.surface,
+    marginTop: 8,
+  },
+  moreDetailsBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary[700],
+  },
+  applyFundsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary[600],
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  applyFundsBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
   },
 
   // ── Pending Section ──
@@ -1178,11 +1272,21 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 12,
   },
+  pendingActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   approveBtn: {
-    backgroundColor: '#d97706',
+    flex: 1,
     borderRadius: radius.md,
     paddingVertical: 10,
     alignItems: 'center',
+  },
+  approveBtnApprove: {
+    backgroundColor: '#d97706',
+  },
+  approveBtnDeny: {
+    backgroundColor: colors.danger[600],
   },
   approveBtnText: {
     color: '#fff',
