@@ -162,7 +162,7 @@ export const getSHGById = async (shgId: string) => {
 
   const enriched = {
     ...group,
-    poolBalance: (poolBalancePaise / 100) + totalLenderFunds,
+    poolBalance: poolBalancePaise / 100,
     poolTransactions: recentTxns,
   }
 
@@ -226,7 +226,7 @@ export const getUserSHGs = async (userId: string) => {
       ...m,
       shg: {
         ...m.shg,
-        poolBalance: poolBalance + totalLenderFunds,
+        poolBalance,
         poolTransactions: recentTxns,
       },
     }
