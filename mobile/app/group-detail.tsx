@@ -84,6 +84,14 @@ export default function GroupDetailScreen() {
   const poolTxns = shg.poolTransactions || []
   const activeFundingRequests = fundingRequests.filter((req: any) => ['FULLY_FUNDED', 'DISBURSED', 'ACTIVE'].includes(req.status))
 
+  // Compute funds received (from lenders) vs lent (to members)
+  const fundsReceived = activeFundingRequests.reduce((sum: number, req: any) => {
+    return sum + (req.totalFunded || 0)
+  }, 0)
+  const fundsLent = loans.reduce((sum: number, loan: any) => {
+    return sum + (loan.amount || 0)
+  }, 0)
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -135,6 +143,26 @@ export default function GroupDetailScreen() {
             <Text style={styles.statLabel}>Lenders</Text>
           </View>
         </View>
+
+        {/* Funds Received vs Lent */}
+        <Card style={styles.fundsCard}>
+          <Text style={styles.fundsTitle}>💰 Fund Flow</Text>
+          <View style={styles.fundsRow}>
+            <View style={styles.fundsBox}>
+              <Text style={styles.fundsLabel}>Received (Lenders)</Text>
+              <Text style={styles.fundsValueReceived}>+₹{fundsReceived.toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={styles.fundsDivider} />
+            <View style={styles.fundsBox}>
+              <Text style={styles.fundsLabel}>Lent (Members)</Text>
+              <Text style={styles.fundsValueLent}>-₹{fundsLent.toLocaleString('en-IN')}</Text>
+            </View>
+          </View>
+          <View style={styles.fundsBalanceRow}>
+            <Text style={styles.fundsBalanceLabel}>Available Pool</Text>
+            <Text style={styles.fundsBalanceValue}>₹{(totalFund - fundsLent).toLocaleString('en-IN')}</Text>
+          </View>
+        </Card>
 
         {/* Lenders Section */}
         {lenders.length > 0 && (
@@ -448,6 +476,64 @@ const styles = StyleSheet.create({
   },
   sectionCard: {
     marginBottom: 20,
+  },
+  fundsCard: {
+    marginBottom: 20,
+    padding: 16,
+  },
+  fundsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: 12,
+  },
+  fundsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fundsBox: {
+    flex: 1,
+  },
+  fundsLabel: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginBottom: 4,
+  },
+  fundsValueReceived: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#16a34a',
+  },
+  fundsValueLent: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#dc2626',
+  },
+  fundsDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.gray[200],
+    marginHorizontal: 16,
+  },
+  fundsBalanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+  },
+  fundsBalanceLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  fundsBalanceValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.primary[700],
   },
   sectionTitle: {
     fontSize: 16,
