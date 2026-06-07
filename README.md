@@ -329,16 +329,12 @@ npm test -- --coverage   # With coverage report
 |------|-------------|
 | [`docs/PRD.md`](docs/PRD.md) | Product Requirements Document |
 | [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) | Full system architecture |
-| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | 20-week phase breakdown with status |
-| [`docs/SKILL_BACKEND.md`](docs/SKILL_BACKEND.md) | Backend development guide |
-| [`docs/SKILL_FRONTEND.md`](docs/SKILL_FRONTEND.md) | Frontend development guide |
-| [`docs/SKILL_DEPLOYMENT.md`](docs/SKILL_DEPLOYMENT.md) | Deployment & DevOps guide |
 
 ---
 
 ## 👨‍💻 Author
 
-Final Year Project, April 2026 
+Gramchain, April 2026 - Continued
 
 **Riya Sharma** 
 
