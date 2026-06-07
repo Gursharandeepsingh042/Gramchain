@@ -33,9 +33,9 @@ It deploys Solidity smart contracts on **Polygon** to automate loan origination,
 | 🔔 **Notifications** | ✅ Complete | FCM push + in-app, Hindi/English templates, quiet hours |
 | 🧪 **Testing** | ✅ Active | Jest + ts-jest, unit tests for auth & loan services |
 | ⚙️ **CI/CD** | ✅ Active | GitHub Actions — backend build/test, contract compile/test |
-| 🤖 **ML Service** | 🔧 Planned | FastAPI + TFLite pipeline — Phase 2 |
-| 🚀 **Blockchain Deployment** | 🔧 Pending | Contracts written; testnet deployment pending |
-| 📊 **Demo Mode** | ✅ Active | `DEMO_MODE=true` — Magic OTP `123456` available for dev testing |
+| 🤖 **ML Service** |✅ Active | FastAPI + TFLite pipeline — Phase 2 |
+| 🚀 **Blockchain Deployment** |✅ Active | Contracts written; mainnet deployed polygon|
+| 📊 **Production Mode** | ✅ Active |available for dev testing and internal testing |
 
 ---
 
@@ -145,10 +145,10 @@ gramchain/
 │   ├── test/                   # Contract test suites
 │   └── hardhat.config.ts
 │
-├── ml/                         # 🔧 Python ML Service (planned)
+├── ml/                         # Deployed on render 
 │   └── ...
 │
-├── deployment/                 # 🔧 Docker + Terraform (planned)
+├── deployment/                 # Deployed on Render and Expo
 │   └── ...
 │
 └── docs/                       # 📚 Project documentation
@@ -168,7 +168,7 @@ gramchain/
 | `LoanManager.sol` | ✅ Written | Loan lifecycle: PENDING → ACTIVE → REPAID/DEFAULTED |
 | `LenderPool.sol` | ✅ Written | Lender deposits USDC, receives **GramUnit (GRAM)** ERC-20 shares |
 | `CreditScoreRegistry.sol` | ✅ Written | Immutable on-chain credit score history |
-| **Testnet Deployment** | 🔧 Pending | Target: Polygon Amoy Testnet |
+| **Mainnet Deployment** | ✅ Deployed | Target: Polygon Amoy Testnet |
 
 ---
 
@@ -338,7 +338,17 @@ npm test -- --coverage   # With coverage report
 
 ## 👨‍💻 Author
 
-**Gursharandeep Singh** — Final Year Project, April 2026  
+Final Year Project, April 2026 
+
+**Riya Sharma** 
+
+**Lakshiyta Bhatti**
+
+**Raghav Chaudhary**
+
+**Gursharan Deep Singh**
+
+
 GitHub: [@Gursharandeepsingh042](https://github.com/Gursharandeepsingh042)
 
 ---
